@@ -55,7 +55,7 @@ results in:
 ╰────┴────────────────┴───────────┴───────────────┴────────────────────────────╯
 ```
 
-Depending on your terminal font, quality of final result may range from unreadable piece of sh*t to beautiful looking table :)
+Fanciness disclaimer: depending on your terminal font quality of final result may range from unreadable piece of sh*t to beautiful looking table :)
 
 To get some more idea how tables may look like, have a look at examples:
 
