@@ -227,7 +227,7 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
 
         let ns = self.chars.ns;
         let len = padded.len();
-        let max_lines = padded.iter().map(|s| s.len()).max().unwrap();
+        let max_lines = padded.iter().map(|s| s.len()).max().unwrap_or(0);
         let str_padding = self.padding;
         let edg_padding = self.padding + 1;
 
@@ -341,9 +341,8 @@ mod test {
             .add_column_named("PERMISSION", Layout::Expandable(30))
             .add_column_named("DESCRIPTION", Layout::Expandable(150))
             .add_title("props")
+            .padding(0)
             .build(80);
-
-        table.render(vec![[]]);
 
         assert_eq!(table.columns.first().unwrap().width, 8);
         assert_eq!(table.columns.get(1).unwrap().width, 4);
@@ -363,6 +362,7 @@ mod test {
             .add_column_named("ROLE", Layout::Fixed(10))
             .add_column_named("PERMISSION", Layout::Expandable(30))
             .add_column_named("DESCRIPTION", Layout::Expandable(50))
+            .padding(0)
             .build(0);
 
         assert_eq!(table.columns.first().unwrap().width, 2);
