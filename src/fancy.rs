@@ -19,12 +19,12 @@ impl Default for FancyTableOpts {
     }
 }
 
-impl<'a> FancyTableBuilder<'a> {
+impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
     fn new(opts: FancyTableOpts) -> Self {
         Self {
             headers: Vec::new(),
             columns: Vec::new(),
-            padding: 0,
+            padding: 1,
             charset: opts.charset,
             rows_separator: opts.rows_separator,
             headers_separator: opts.headers_separator,
@@ -50,19 +50,19 @@ impl<'a> FancyTableBuilder<'a> {
         });
         self
     }
-    pub fn add_column_named(self, header: &'a str, layout: Layout) -> Self {
+    pub fn add_column_named(self, header: T, layout: Layout) -> Self {
         self.add_column_named_with_align(header, layout, Align::Left)
     }
-    pub fn add_wrapping_column_named(self, header: &'a str, layout: Layout) -> Self {
+    pub fn add_wrapping_column_named(self, header: T, layout: Layout) -> Self {
         self.add_wrapping_column_named_with_align(header, layout, Align::Left)
     }
     pub fn add_column_named_with_align(
         mut self,
-        header: &'a str,
+        header: T,
         layout: Layout,
         align: Align,
     ) -> Self {
-        let len = header.len();
+        let len = header.as_ref().len();
         let max_lines = self.max_lines;
 
         self.headers.push(header);
@@ -70,11 +70,11 @@ impl<'a> FancyTableBuilder<'a> {
     }
     pub fn add_wrapping_column_named_with_align(
         mut self,
-        header: &'a str,
+        header: T,
         layout: Layout,
         align: Align,
     ) -> Self {
-        let len = header.len();
+        let len = header.as_ref().len();
         let max_lines = self.max_lines;
 
         self.headers.push(header);
@@ -100,7 +100,8 @@ impl<'a> FancyTableBuilder<'a> {
         self.rows_separator = separator;
         self
     }
-    pub fn build(self, table_width: usize) -> FancyTable<'a> {
+
+    pub fn build(self, table_width: usize) -> FancyTable<'a, T> {
         let title = self.title.map(|t| TitleSpec {
             title: t,
             align: self.title_align,
@@ -113,13 +114,12 @@ impl<'a> FancyTableBuilder<'a> {
             padding: self.padding,
             headers: self.headers,
             columns: self.columns,
-            rows: Vec::new(),
             title,
         };
         table.recalculate(table_width);
         table
     }
-    pub fn build_with_max_width(self) -> FancyTable<'a> {
+    pub fn build_with_max_width(self) -> FancyTable<'a, T> {
         let w = match termion::terminal_size() {
             Ok((w, _)) => w,
             _ => DEFAULT_WIDTH,
@@ -128,8 +128,8 @@ impl<'a> FancyTableBuilder<'a> {
     }
 }
 
-impl<'a> FancyTable<'a> {
-    pub fn create(opts: FancyTableOpts) -> FancyTableBuilder<'a> {
+impl<'a, T: AsRef<str>> FancyTable<'a, T> {
+    pub fn create(opts: FancyTableOpts) -> FancyTableBuilder<'a, T> {
         FancyTableBuilder::new(opts)
     }
 
@@ -144,7 +144,7 @@ impl<'a> FancyTable<'a> {
                 Layout::Slim | Layout::Expandable(_) => self
                     .headers
                     .get(i)
-                    .map(|h| h.len() + (2 * self.padding))
+                    .map(|h| h.as_ref().len() + (2 * self.padding))
                     .unwrap_or(0),
             };
             spec.width = column_width;
@@ -202,11 +202,7 @@ impl<'a> FancyTable<'a> {
         }
     }
 
-    pub fn add_row(&mut self, row: Vec<&'a str>) {
-        self.rows.push(row)
-    }
-
-    fn draw_row(&self, row: &[&'a str]) {
+    fn render_row(&self, row: &'a [T]) {
         let mut padded = row
             .iter()
             .enumerate()
@@ -218,8 +214,8 @@ impl<'a> FancyTable<'a> {
                     Align::Center => Pad::Center,
                 };
                 match col.overflow {
-                    Overflow::Truncate => PadStr::truncating(s),
-                    Overflow::Wrap => PadStr::wrapping(s),
+                    Overflow::Truncate => PadStr::truncating(s.as_ref()),
+                    Overflow::Wrap => PadStr::wrapping(s.as_ref()),
                 }
                 .paddify(
                     col.width.saturating_sub(2 * self.padding),
@@ -250,10 +246,10 @@ impl<'a> FancyTable<'a> {
         }
     }
 
-    pub fn draw(&self) {
+    pub fn render<R: AsRef<[T]>>(&self, rows: Vec<R>) {
         let ch = &self.chars;
         let cols_count = self.columns.len();
-        let rows_count = self.rows.len();
+        let rows_count = rows.len();
         let rsep_chars = self.separator_chars(&self.rows_separator);
         let hsep_chars = self.separator_chars(&self.headers_separator);
         let title_width = self
@@ -308,13 +304,13 @@ impl<'a> FancyTable<'a> {
 
         println!("{top}");
         if !self.headers.is_empty() {
-            self.draw_row(&self.headers);
+            self.render_row(self.headers.as_slice());
         }
         if self.headers_separator.is_some() {
             println!("{h_sep}");
         }
-        for (i, r) in self.rows.iter().enumerate() {
-            self.draw_row(r);
+        for (i, r) in rows.iter().enumerate() {
+            self.render_row(r.as_ref());
             if i < rows_count - 1 && self.rows_separator.is_some() {
                 println!("{r_sep}");
             }
@@ -347,7 +343,8 @@ mod test {
             .add_title("props")
             .build(80);
 
-        table.draw();
+        table.render(vec![[]]);
+
         assert_eq!(table.columns.first().unwrap().width, 8);
         assert_eq!(table.columns.get(1).unwrap().width, 4);
         assert_eq!(table.columns.get(2).unwrap().width, 10);

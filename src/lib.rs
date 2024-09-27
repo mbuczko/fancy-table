@@ -40,25 +40,24 @@ pub struct FancyTableOpts {
     pub max_lines: usize,
 }
 
-pub struct FancyTable<'a> {
+pub struct FancyTable<'a, T: AsRef<str>> {
     width: usize,
     chars: TableChars,
     padding: usize,
-    headers_separator: Option<Separator>,
-    headers: Vec<&'a str>,
     columns: Vec<ColSpec>,
-    rows: Vec<Vec<&'a str>>,
+    headers: Vec<T>,
     rows_separator: Option<Separator>,
+    headers_separator: Option<Separator>,
     title: Option<TitleSpec<'a>>,
 }
 
-pub struct FancyTableBuilder<'a> {
+pub struct FancyTableBuilder<'a, T: AsRef<str>> {
     padding: usize,
     max_lines: usize,
     rows_separator: Option<Separator>,
     headers_separator: Option<Separator>,
     charset: Charset,
-    headers: Vec<&'a str>,
+    headers: Vec<T>,
     columns: Vec<ColSpec>,
     title: Option<&'a str>,
     title_align: TitleAlign,
