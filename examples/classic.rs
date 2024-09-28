@@ -16,14 +16,14 @@ fn main() {
         .build(80);
 
     table.render(vec![
-        &[
+        [
             "29",
             "Tauriel",
             "Woodland elf",
             "Tearjerker\n1/10",
             "Tauriel is a woodland elf created for The Hobbit films. Her name means \"daughter of the forest\" in Sindarin.",
         ],
-        &[
+        [
             "1",
             "Maeglin",
             "Elf",

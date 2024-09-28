@@ -31,14 +31,14 @@ let mut table = FancyTable::create(FancyTableOpts {
    .build(80);
     
 table.render(vec![
-    &[
+    [
         "1",
         "Maeglin",
         "Elf",
         "Renegade\n10/10",
         "Maeglin is an elf who betrayed his fellow elves to the evil Morgoth in an age before The Lord of the Rings.",
     ],
-    &[
+    [
         "29",
         "Tauriel",
         "Woodland elf",
