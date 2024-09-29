@@ -5,7 +5,8 @@ use crate::{
     TitleAlign, TitleSpec,
 };
 
-const DEFAULT_WIDTH: u16 = 120;
+const DEFAULT_TABLE_WIDTH: usize = 120;
+const DEFAULT_COLUMN_WIDTH: usize = 10;
 
 impl Default for FancyTableOpts {
     fn default() -> Self {
@@ -13,7 +14,7 @@ impl Default for FancyTableOpts {
             title_align: TitleAlign::LeftOffset(4),
             charset: Charset::Modern,
             headers_separator: Some(Separator::Double),
-            rows_separator: Some(Separator::Single),
+            rows_separator: None,
             max_lines: 3,
         }
     }
@@ -33,7 +34,7 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
             title_align: opts.title_align,
         }
     }
-    pub fn add_column(
+    fn add_column_spec(
         mut self,
         width: usize,
         max_lines: usize,
@@ -50,13 +51,41 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
         });
         self
     }
+
+    pub fn add_column(
+        mut self,
+        header: Option<T>,
+        layout: Layout,
+        align: Align,
+        overflow: Overflow,
+        max_lines: usize,
+    ) -> Self {
+        let len = match layout {
+            Layout::Fixed(f) => f,
+            _ => header
+                .as_ref()
+                .map(|h| h.as_ref().chars().count())
+                .unwrap_or(DEFAULT_COLUMN_WIDTH),
+        };
+        if let Some(header) = header {
+            self.headers.push(header);
+        }
+        self.add_column_spec(len, max_lines, layout, align, overflow)
+    }
     pub fn add_column_named(self, header: T, layout: Layout) -> Self {
         self.add_column_named_with_align(header, layout, Align::Left)
     }
-    pub fn add_wrapping_column_named(self, header: T, layout: Layout) -> Self {
-        self.add_wrapping_column_named_with_align(header, layout, Align::Left)
+    pub fn add_column_named_wrapping(self, header: T, layout: Layout) -> Self {
+        self.add_column_named_wrapping_with_align(header, layout, Align::Left)
     }
-    pub fn add_column_named_with_align(
+    pub fn add_column_named_with_align(mut self, header: T, layout: Layout, align: Align) -> Self {
+        let len = header.as_ref().len();
+        let max_lines = self.max_lines;
+
+        self.headers.push(header);
+        self.add_column_spec(len, max_lines, layout, align, Overflow::Truncate)
+    }
+    pub fn add_column_named_wrapping_with_align(
         mut self,
         header: T,
         layout: Layout,
@@ -66,19 +95,7 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
         let max_lines = self.max_lines;
 
         self.headers.push(header);
-        self.add_column(len, max_lines, layout, align, Overflow::Truncate)
-    }
-    pub fn add_wrapping_column_named_with_align(
-        mut self,
-        header: T,
-        layout: Layout,
-        align: Align,
-    ) -> Self {
-        let len = header.as_ref().len();
-        let max_lines = self.max_lines;
-
-        self.headers.push(header);
-        self.add_column(len, max_lines, layout, align, Overflow::Wrap)
+        self.add_column_spec(len, max_lines, layout, align, Overflow::Wrap)
     }
     pub fn add_title(mut self, title: &'a str) -> Self {
         self.title = Some(title);
@@ -121,10 +138,10 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
     }
     pub fn build_with_max_width(self) -> FancyTable<'a, T> {
         let w = match termion::terminal_size() {
-            Ok((w, _)) => w,
-            _ => DEFAULT_WIDTH,
+            Ok((w, _)) => w as usize,
+            _ => DEFAULT_TABLE_WIDTH,
         };
-        self.build(w as usize)
+        self.build(w)
     }
 }
 
@@ -305,9 +322,9 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
         println!("{top}");
         if !self.headers.is_empty() {
             self.render_row(self.headers.as_slice());
-        }
-        if self.headers_separator.is_some() {
-            println!("{h_sep}");
+            if self.headers_separator.is_some() {
+                println!("{h_sep}");
+            }
         }
         for (i, r) in rows.iter().enumerate() {
             self.render_row(r.as_ref());

@@ -6,13 +6,13 @@ fn main() {
         max_lines: 5,
         ..Default::default()
     })
-        .add_column_named("ID", Layout::Slim)
-        .add_column_named("NAME", Layout::Fixed(16))
-        .add_wrapping_column_named_with_align("CHARACTER", Layout::Fixed(11), Align::Center)
-        .add_column_named_with_align("BADNESS SCALE", Layout::Expandable(15), Align::Center)
-        .add_wrapping_column_named_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
-        .hseparator(Some(Separator::Single))
-        .build(80);
+    .add_column_named("ID", Layout::Slim)
+    .add_column_named("NAME", Layout::Fixed(16))
+    .add_column_named_wrapping_with_align("CHARACTER", Layout::Fixed(11), Align::Center)
+    .add_column_named_with_align("BADNESS SCALE", Layout::Expandable(15), Align::Center)
+    .add_column_named_wrapping_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
+    .hseparator(Some(Separator::Single))
+    .build(80);
 
     table.render(vec![
         [

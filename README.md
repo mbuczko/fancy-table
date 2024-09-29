@@ -12,7 +12,15 @@ Project evolved and during next weeks few other features got implemented to have
 - customizable (optional) row separators
 - customizable padding
 
-All exposed via simple, yet quite powerful API. For example, following code:
+## Installation
+
+``` toml
+[dependencies]
+fancy-table = "0.3.0"
+```
+
+## Usage
+All crucial functionality exposed via simple, yet quite powerful API:
 
 ```rust
 let mut table = FancyTable::create(FancyTableOpts {
@@ -22,9 +30,9 @@ let mut table = FancyTable::create(FancyTableOpts {
    .add_title_with_align("props", TitleAlign::RightOffset(1))
    .add_column_named("ID", Layout::Slim)
    .add_column_named("NAME", Layout::Fixed(16))
-   .add_wrapping_column_named_with_align("CHARACTER", Layout::Fixed(11), Align::Center)
+   .add_column_named_wrapping_with_align("CHARACTER", Layout::Fixed(11), Align::Center)
    .add_column_named_with_align("BADNESS SCALE", Layout::Expandable(15), Align::Center)
-   .add_wrapping_column_named_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
+   .add_column_named_wrapping_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
    .padding(1)
    .hseparator(Some(Separator::Double))
    .rseparator(Some(Separator::Custom('┄')))
@@ -48,7 +56,7 @@ table.render(vec![
 ]);
 ```
 
-results in:
+results in fancy looking table with title and headers:
 
 ```
 ╭────┬────────────────┬───────────┬───────────────┬──────────────────▪ props ▪─╮

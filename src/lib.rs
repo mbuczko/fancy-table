@@ -1,8 +1,8 @@
 use charset::{Charset, TableChars};
 
 pub mod charset;
-mod padstr;
 mod fancy;
+mod padstr;
 
 pub enum Layout {
     Slim,
