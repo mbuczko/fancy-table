@@ -23,7 +23,7 @@ fn should_wrap(agg: &str, s: &Chunk, hspace: usize) -> bool {
 }
 
 fn center_string(s: &str, width: usize) -> String {
-    let padding = width - s.len();
+    let padding = width - s.chars().count();
     let left_padding = padding / 2;
     let right_padding = padding - left_padding;
 

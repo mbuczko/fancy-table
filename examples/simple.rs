@@ -1,19 +1,21 @@
-use fancy_table::{charset::Charset, Align, FancyTable, FancyTableOpts, Layout, Separator, TitleAlign};
+use fancy_table::{
+    charset::Charset, Align, FancyTable, FancyTableOpts, Layout, Separator, TitleAlign,
+};
 
 fn main() {
     let table = FancyTable::create(FancyTableOpts {
         charset: Charset::Simple,
         ..Default::default()
     })
-        .add_title_with_align("props", TitleAlign::RightOffset(1))
-        .add_column_named("ID", Layout::Slim)
-        .add_column_named("NAME", Layout::Fixed(16))
-        .add_wrapping_column_named_with_align("CHARACTER", Layout::Fixed(11), Align::Center)
-        .add_column_named_with_align("BADNESS SCALE", Layout::Expandable(15), Align::Center)
-        .add_wrapping_column_named_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
-        .hseparator(Some(Separator::Single))
-        .padding(1)
-        .build(80);
+    .add_title_with_align("props", TitleAlign::RightOffset(1))
+    .add_column_named("ID", Layout::Slim)
+    .add_column_named("NAME", Layout::Fixed(16))
+    .add_column_named_wrapping_with_align("CHARACTER", Layout::Fixed(11), Align::Center)
+    .add_column_named_with_align("BADNESS SCALE", Layout::Expandable(15), Align::Center)
+    .add_column_named_wrapping_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
+    .hseparator(Some(Separator::Single))
+    .padding(1)
+    .build(80);
 
     table.render(vec![
         [
