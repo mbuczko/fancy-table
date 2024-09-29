@@ -12,7 +12,15 @@ Project evolved and during next weeks few other features got implemented to have
 - customizable (optional) row separators
 - customizable padding
 
-All exposed via simple, yet quite powerful API. For example, following code:
+## Installation
+
+``` toml
+[dependencies]
+fancy-table = "0.3.0"
+```
+
+## Usage
+All crucial functionality exposed via simple, yet quite powerful API:
 
 ```rust
 let mut table = FancyTable::create(FancyTableOpts {
@@ -48,7 +56,7 @@ table.render(vec![
 ]);
 ```
 
-results in:
+results in fancy looking table with title and headers:
 
 ```
 ╭────┬────────────────┬───────────┬───────────────┬──────────────────▪ props ▪─╮
