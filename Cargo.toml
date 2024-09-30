@@ -11,4 +11,3 @@ license = "MIT"
 edition = "2021"
 
 [dependencies]
-termion = "4.0.2"

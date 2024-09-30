@@ -5,7 +5,6 @@ use crate::{
     TitleAlign, TitleSpec,
 };
 
-const DEFAULT_TABLE_WIDTH: usize = 120;
 const DEFAULT_COLUMN_WIDTH: usize = 10;
 
 impl Default for FancyTableOpts {
@@ -135,13 +134,6 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
         };
         table.recalculate(table_width);
         table
-    }
-    pub fn build_with_max_width(self) -> FancyTable<'a, T> {
-        let w = match termion::terminal_size() {
-            Ok((w, _)) => w as usize,
-            _ => DEFAULT_TABLE_WIDTH,
-        };
-        self.build(w)
     }
 }
 
