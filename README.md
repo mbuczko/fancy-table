@@ -16,7 +16,7 @@ Project evolved and during next weeks few other features got implemented to have
 
 ``` toml
 [dependencies]
-fancy-table = "0.3.0"
+fancy-table = "0.3.1"
 ```
 
 ## Usage

@@ -1,6 +1,6 @@
 [package]
 name = "fancy-table"
-version = "0.3.0"
+version = "0.3.1"
 description = "Fancy tables with bells and whistles"
 repository = "https://github.com/mbuczko/fancy-table"
 readme = "README.md"
