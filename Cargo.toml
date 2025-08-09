@@ -8,6 +8,7 @@ authors = ["Michał Buczko"]
 keywords = ["ascii", "table", "cli"]
 categories = ["command-line-interface", "gui"]
 license = "MIT"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
+regex = "1.11.1"

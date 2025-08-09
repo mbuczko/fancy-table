@@ -1,8 +1,8 @@
 use crate::{
-    charset::Charset,
-    padstr::{Pad, PadStr},
     Align, ColSpec, FancyTable, FancyTableBuilder, FancyTableOpts, Layout, Overflow, Separator,
     TitleAlign, TitleSpec,
+    charset::Charset,
+    padstr::{Pad, PadStr},
 };
 
 const DEFAULT_COLUMN_WIDTH: usize = 10;

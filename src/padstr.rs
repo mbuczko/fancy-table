@@ -1,4 +1,6 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, ops::Deref};
+
+use crate::ansi::AnsiString;
 
 #[derive(Debug)]
 enum Chunk<'a> {
@@ -14,12 +16,12 @@ pub enum Pad {
 }
 
 pub struct PadStr<'a> {
-    inner: VecDeque<Chunk<'a>>,
+    chunks: Vec<Chunk<'a>>,
 }
 
-fn should_wrap(agg: &str, s: &Chunk, hspace: usize) -> bool {
+fn should_wrap(agg: &AnsiString, str: &AnsiString, hspace: usize) -> bool {
     let line_start = agg.is_empty();
-    !line_start && (agg.len() + (!line_start as usize) + s.inner().len() > hspace)
+    !line_start && (agg.len() + (!line_start as usize) + str.len() > hspace)
 }
 
 fn center_string(s: &str, width: usize) -> String {
@@ -31,66 +33,79 @@ fn center_string(s: &str, width: usize) -> String {
 }
 
 fn rightpad_string(s: &str, width: usize) -> String {
-    format!("{:width$}", s)
+    format!("{s:width$}")
 }
 
 fn leftpad_string(s: &str, width: usize) -> String {
-    format!("{:>width$}", s)
+    format!("{s:>width$}")
 }
 
-impl<'a> Chunk<'a> {
-    fn inner(&self) -> &'a str {
+impl<'a> AsRef<str> for Chunk<'a> {
+    fn as_ref(&self) -> &str {
         match self {
             Self::Word(s) | Self::Term(s) => s,
         }
     }
 }
 
+impl<'a> Deref for Chunk<'a> {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
 impl<'a> PadStr<'a> {
-    pub fn truncating(s: &'a str) -> Self {
-        let inner = s.lines().map(Chunk::Term).collect::<VecDeque<_>>();
-        Self { inner }
+    pub fn truncating(input: &'a str) -> Self {
+        let chunks = input.lines().map(Chunk::Term).collect::<Vec<_>>();
+        Self { chunks }
     }
 
-    pub fn wrapping(s: &'a str) -> Self {
-        let inner = s
+    pub fn wrapping(input: &'a str) -> Self {
+        let chunks = input
             .lines()
             .flat_map(|l| {
-                let sp = l.split_whitespace();
-                let count = sp.clone().count();
-                sp.enumerate().map(move |(i, w)| {
-                    if i == count - 1 {
-                        Chunk::Term(w)
-                    } else {
-                        Chunk::Word(w)
-                    }
+                let mut iter = l.split(' ').peekable();
+
+                std::iter::from_fn(move || {
+                    iter.next().map(|slice| {
+                        if iter.peek().is_none() {
+                            Chunk::Term(slice)
+                        } else {
+                            Chunk::Word(slice)
+                        }
+                    })
                 })
             })
-            .collect::<VecDeque<_>>();
+            .collect::<Vec<_>>();
 
-        Self { inner }
+        Self { chunks }
     }
 
     pub fn paddify(&self, hspace: usize, vspace: usize, pad: Pad) -> VecDeque<String> {
-        let mut bag = VecDeque::new();
-        let mut agg = String::default();
+        let mut bag = VecDeque::with_capacity(vspace);
+        let mut agg = AnsiString::default();
+        let count = self.chunks.len();
 
-        for (i, s) in self.inner.iter().enumerate() {
-            let last_str = i == self.inner.len() - 1;
-            let term_str = matches!(s, Chunk::Term(_));
+        for (i, chunk) in self.chunks.iter().enumerate() {
+            let is_last_str = i == count - 1;
+            let is_term_str = matches!(chunk, Chunk::Term(_));
+            let ansi_string = AnsiString::new(chunk);
 
-            if !should_wrap(&agg, s, hspace) {
-                if !agg.is_empty() {
-                    agg.push(' ');
-                }
-                agg.push_str(s.inner());
+            if should_wrap(&agg, &ansi_string, hspace) {
+                // When text wraps to the next line, any active formatting codes
+                // should be reapplied at the start of the new line.
+                let c2c = agg.codes_to_continue();
+
+                bag.push_back(self.wrap_with_padding(agg, hspace, &pad));
+                agg = ansi_string.with_sgr(c2c)
             } else {
-                bag.push_back(self.pad_str(&agg, hspace, &pad));
-                agg = s.inner().to_owned();
+                agg.append(ansi_string)
             }
-            if bag.len() < vspace && (agg.len() == hspace || last_str || term_str) {
-                bag.push_back(self.pad_str(&agg, hspace, &pad));
-                agg = String::default();
+            if bag.len() < vspace && (agg.len() == hspace || is_last_str || is_term_str) {
+                bag.push_back(self.wrap_with_padding(agg, hspace, &pad));
+                agg = AnsiString::default();
             }
             if bag.len() == vspace {
                 return bag;
@@ -99,12 +114,12 @@ impl<'a> PadStr<'a> {
         bag
     }
 
-    fn pad_str(&self, s: &str, hspace: usize, just: &Pad) -> String {
-        let subs = s.get(0..hspace).unwrap_or(s);
-        match just {
-            Pad::Left => leftpad_string(subs, hspace),
-            Pad::Right => rightpad_string(subs, hspace),
-            Pad::Center => center_string(subs, hspace),
+    fn wrap_with_padding(&self, s: AnsiString, hspace: usize, pad: &Pad) -> String {
+        let slice = s.get(hspace);
+        match pad {
+            Pad::Left => leftpad_string(&slice, hspace),
+            Pad::Right => rightpad_string(&slice, hspace),
+            Pad::Center => center_string(&slice, hspace),
         }
     }
 }

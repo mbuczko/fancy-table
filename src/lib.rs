@@ -1,5 +1,6 @@
 use charset::{Charset, TableChars};
 
+mod ansi;
 pub mod charset;
 mod fancy;
 mod padstr;
