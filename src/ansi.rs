@@ -30,8 +30,8 @@ impl<'t> MatchLike<'t> {
 }
 
 #[derive(Debug)]
-/// Representation of a single segment of text starting with
-/// optional SGR code, optionally reset at the end of string.
+/// Representation of a single segment of a String with ANSI codes: an optional opening code (SGR) and a reset code.
+/// Each segment contains an optional code only at the starting position and a reset code at the end.
 ///
 /// Example: "\x1b[38;2;255;105;180mHot Pink\x1b[0m"
 pub struct AnsiSegment<'a> {
@@ -41,6 +41,9 @@ pub struct AnsiSegment<'a> {
 }
 
 #[derive(Debug, Default)]
+/// Represents a string containing ANSI escape codes. The string is internally divided into segments,
+/// where each segment represents a portion of the string with its associated opening SGR (Select Graphic Rendition)
+/// code and corresponding reset code.
 pub struct AnsiString<'a> {
     len: usize,
     segments: Vec<AnsiSegment<'a>>,
@@ -122,6 +125,11 @@ impl<'a> AnsiString<'a> {
         codes.join("")
     }
 
+    /// Returns a substring of the specified length while preserving ANSI codes intact - no ANSI code
+    /// will be corrupted. For performance reasons, returns a Cow<str> since in most cases the result
+    /// will simply be a sub-slice of the AnsiString. The only case when an owned variant is returned
+    /// is when the initial SGR code (stored in the first segment) was explicitly set using the
+    /// `with_sgr` function during AnsiString creation.
     pub fn get(&self, len: usize) -> Cow<'a, str> {
         let (_, bytes, _needs_rst) =
             self.segments
