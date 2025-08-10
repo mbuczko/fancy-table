@@ -1,5 +1,5 @@
 use fancy_table::{
-    charset::Charset, Align, FancyTable, FancyTableOpts, Layout, Separator, TitleAlign,
+    Align, FancyTable, FancyTableOpts, Layout, Separator, TitleAlign, charset::Charset,
 };
 
 fn main() {

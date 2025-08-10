@@ -3,6 +3,33 @@ use std::{borrow::Cow, cmp::min, fmt};
 use regex::Regex;
 
 #[derive(Debug)]
+enum MatchLike<'t> {
+    Real(regex::Match<'t>),
+    Synth(usize),
+}
+
+impl<'t> MatchLike<'t> {
+    fn start(&self) -> usize {
+        match self {
+            Self::Real(m) => m.start(),
+            Self::Synth(start) => *start,
+        }
+    }
+    fn len(&self) -> usize {
+        match self {
+            Self::Real(m) => m.end(),
+            Self::Synth(_) => 0,
+        }
+    }
+    fn as_str(&self) -> &'t str {
+        match self {
+            Self::Real(m) => m.as_str(),
+            Self::Synth(_) => "",
+        }
+    }
+}
+
+#[derive(Debug)]
 /// Representation of a single segment of text starting with
 /// optional SGR code, optionally reset at the end of string.
 ///
@@ -158,7 +185,11 @@ fn build_ansi_string<'a>(regex: Regex, input: &'a str) -> AnsiString<'a> {
     let mut result = AnsiString::default();
     let mut last_code = (0, 0, false); // pos, len, is_reset?
 
-    for mat in regex.find_iter(input) {
+    for mat in regex
+        .find_iter(input)
+        .map(MatchLike::Real)
+        .chain(std::iter::once(MatchLike::Synth(input.len())))
+    {
         let code_start = mat.start();
         let code_len = mat.len();
         let is_reset = is_rst(mat.as_str());
@@ -166,7 +197,7 @@ fn build_ansi_string<'a>(regex: Regex, input: &'a str) -> AnsiString<'a> {
         let (last_code_pos, last_code_len, last_code_is_reset) = last_code;
         let last_code_end = last_code_pos + last_code_len;
 
-        if last_code_end < code_start {
+        last_code = if last_code_end < code_start {
             result.push_segment(AnsiSegment {
                 text: &input[last_code_end..code_start],
                 sgr_code: if !last_code_is_reset && last_code_len > 0 {
@@ -180,13 +211,11 @@ fn build_ansi_string<'a>(regex: Regex, input: &'a str) -> AnsiString<'a> {
                     None
                 },
             });
-            last_code = (code_start, code_len, is_reset);
+            (code_start, code_len, is_reset)
+        } else if last_code_is_reset {
+            (code_start, code_len, is_reset)
         } else {
-            last_code = if last_code_is_reset {
-                (code_start, code_len, is_reset)
-            } else {
-                (last_code_pos, last_code_len + code_len, is_reset)
-            }
+            (last_code_pos, last_code_len + code_len, is_reset)
         }
     }
     result
@@ -195,17 +224,78 @@ fn build_ansi_string<'a>(regex: Regex, input: &'a str) -> AnsiString<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     const RED: &str = "\x1b[33m";
-    const RESET: &str = "\x1b[0m";
+    const RST: &str = "\x1b[0m";
+
+    macro_rules! assert_codes {
+        ($string:expr, [$($segment:tt),+]) => {
+            {
+                let str = format!($string);
+                let ansi = AnsiString::new(&str);
+                let segments = &ansi.segments;
+                let mut segment_index = 0;
+
+                $(
+                    assert_codes!(@verify_segment segments[segment_index], $segment);
+                    segment_index += 1;
+                )+
+                    assert_eq!(segments.len(), segment_index, "Expected {} segments, found {}", segment_index, segments.len());
+            }
+        };
+        (@verify_segment $seg:expr, { $($field:ident => $value:tt),* }) => {
+            let seg = &$seg;
+            $(
+                assert_codes!(@check_field seg, $field, $value);
+            )*
+        };
+        (@check_field $seg:expr, len, $expected:expr) => {
+            assert_eq!($seg.len(), $expected);
+        };
+        (@check_field $seg:expr, txt, $expected:expr) => {
+            assert_eq!($seg.text, $expected);
+        };
+        (@check_field $seg:expr, sgr, $expected:literal) => {
+            let formatted = format!($expected);
+            assert_eq!($seg.sgr_code, Some(std::borrow::Cow::Borrowed(formatted.as_str())));
+        };
+        (@check_field $seg:expr, sgr, None) => {
+            assert_eq!($seg.sgr_code, None)
+        };
+        (@check_field $seg:expr, rst, $expected:literal) => {
+            let formatted = format!($expected);
+            assert_eq!($seg.rst_code, Some(std::borrow::Cow::Borrowed(formatted.as_str())));
+        };
+        (@check_field $seg:expr, rst, None) => {
+            assert_eq!($seg.rst_code, None)
+        };
+    }
 
     #[test]
-    fn ansi_string_splitting() {
-        let str = format!("{RED}foo{RESET}");
-        let ansi = AnsiString::new(&str);
-        let seg = ansi.segments.first().unwrap();
-
-        assert_eq!(seg.sgr_code, Some(Cow::Borrowed(RED)));
-        assert_eq!(seg.rst_code, Some(Cow::Borrowed(RESET)));
-        assert_eq!(seg.text, "foo");
+    fn ansi_strings() {
+        assert_codes!("{RED}foo{RST}", [
+            {
+                len => 3,
+                txt => "foo",
+                sgr => "{RED}",
+                rst => "{RST}"
+            }
+        ]);
+        assert_codes!("foo{RST}", [
+            {
+                len => 3,
+                txt => "foo",
+                sgr => None,
+                rst => "{RST}"
+            }
+        ]);
+        assert_codes!("{RED}🦀foo🦀", [
+            {
+                len => 5,
+                txt => "🦀foo🦀",
+                sgr => "{RED}",
+                rst => None
+            }
+        ]);
     }
 }
