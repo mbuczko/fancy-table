@@ -76,3 +76,6 @@ struct TitleSpec<'a> {
     title: &'a str,
     align: TitleAlign,
 }
+
+#[doc(hidden)]
+pub use ansi::AnsiString;

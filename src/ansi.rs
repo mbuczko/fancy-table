@@ -35,9 +35,9 @@ impl<'t> MatchLike<'t> {
 ///
 /// Example: "\x1b[38;2;255;105;180mHot Pink\x1b[0m"
 pub struct AnsiSegment<'a> {
-    sgr_code: Option<Cow<'a, str>>,
-    rst_code: Option<Cow<'a, str>>,
-    text: &'a str,
+    pub sgr_code: Option<Cow<'a, str>>,
+    pub rst_code: Option<Cow<'a, str>>,
+    pub text: &'a str,
 }
 
 #[derive(Debug, Default)]
@@ -89,6 +89,9 @@ impl<'a> AnsiString<'a> {
         }
         self
     }
+    pub fn segments(&self) -> &[AnsiSegment<'a>] {
+        &self.segments
+    }
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
@@ -99,7 +102,6 @@ impl<'a> AnsiString<'a> {
     pub fn len(&self) -> usize {
         self.len
     }
-
     pub fn push_segment(&mut self, segment: AnsiSegment<'a>) {
         self.len += segment.len() + !self.is_empty() as usize;
         self.segments.push(segment);
@@ -221,20 +223,13 @@ fn build_ansi_string<'a>(regex: Regex, input: &'a str) -> AnsiString<'a> {
     result
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const BLUE: &str = "\x1b[31m";
-    const RED: &str = "\x1b[33m";
-    const RST: &str = "\x1b[0m";
-
-    macro_rules! assert_codes {
+#[macro_export]
+macro_rules! assert_codes {
         ($string:expr, [$($segment:tt),+]) => {
             {
                 let str = format!($string);
-                let ansi = AnsiString::new(&str);
-                let segments = &ansi.segments;
+                let ansi = $crate::AnsiString::new(&str);
+                let segments = ansi.segments();
                 let mut segment_index = 0;
 
                 $(
@@ -271,126 +266,3 @@ mod tests {
             assert_eq!($seg.rst_code, None)
         };
     }
-
-    #[test]
-    fn ansi_strings_single_segment() {
-        assert_codes!("🦀foo🦀", [
-            {
-                len => 5,
-                txt => "🦀foo🦀",
-                sgr => None,
-                rst => None
-            }
-        ]);
-        assert_codes!("{RED}🦀foo🦀", [
-            {
-                len => 5,
-                txt => "🦀foo🦀",
-                sgr => "{RED}",
-                rst => None
-            }
-        ]);
-        assert_codes!("🦀foo🦀{RED}", [
-            {
-                len => 5,
-                txt => "🦀foo🦀",
-                sgr => None,
-                rst => None
-            }
-        ]);
-        assert_codes!("{RED}🦀foo🦀{RST}", [
-            {
-                len => 5,
-                txt => "🦀foo🦀",
-                sgr => "{RED}",
-                rst => "{RST}"
-            }
-        ]);
-        assert_codes!("{RED}{RST}🦀foo🦀", [
-            {
-                len => 5,
-                txt => "🦀foo🦀",
-                sgr => None,
-                rst => None
-            }
-        ]);
-        assert_codes!("🦀foo🦀{RED}{RST}", [
-            {
-                len => 5,
-                txt => "🦀foo🦀",
-                sgr => None,
-                rst => None
-            }
-        ]);
-        assert_codes!("foo{RST}", [
-            {
-                len => 3,
-                txt => "foo",
-                sgr => None,
-                rst => "{RST}"
-            }
-        ]);
-        assert_codes!("{RED}{BLUE}foo", [
-            {
-                len => 3,
-                txt => "foo",
-                sgr => "{RED}{BLUE}",
-                rst => None
-            }
-        ]);
-        assert_codes!("{RST}{RED}{BLUE}{RST}{RED}{BLUE}foo", [
-            {
-                len => 3,
-                txt => "foo",
-                sgr => "{RED}{BLUE}",
-                rst => None
-            }
-        ]);
-    }
-
-    #[test]
-    fn ansi_strings_multi_segment() {
-        assert_codes!("{RED}foo{BLUE}bazz", [
-            {
-                len => 3,
-                txt => "foo",
-                sgr => "{RED}",
-                rst => None
-            },
-            {
-                len => 4,
-                txt => "bazz",
-                sgr => "{BLUE}",
-                rst => None
-            }
-        ]);
-        assert_codes!("{RED}foo{RST}🦀bazz🦀", [
-            {
-                len => 3,
-                txt => "foo",
-                sgr => "{RED}",
-                rst => "{RST}"
-            },
-            {
-                len => 6,
-                txt => "🦀bazz🦀",
-                sgr => None,
-                rst => None
-            }
-        ]);
-        assert_codes!("{RED}foo{RST}{BLUE}🦀bazz🦀", [
-            {
-                len => 3,
-                txt => "foo",
-                sgr => "{RED}",
-                rst => "{RST}"
-            },
-            {
-                len => 6,
-                txt => "🦀bazz🦀",
-                sgr => "{BLUE}",
-                rst => None
-            }
-        ]);
-    }
-}
