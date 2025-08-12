@@ -53,7 +53,7 @@ impl<'a> fmt::Display for AnsiSegment<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let sgr = self.sgr_code.as_deref().unwrap_or("");
         let rst = self.rst_code.as_deref().unwrap_or("");
-        write!(f, "{}{}{})", sgr, self.text, rst)
+        write!(f, "{}{}{}", sgr, self.text, rst)
     }
 }
 
@@ -70,7 +70,12 @@ impl<'a> AnsiSegment<'a> {
     pub fn has_rst_code(&self) -> bool {
         self.rst_code.is_some()
     }
+    /// Returns SGR code size in case of Cow::Borrowed variant.
+    /// For Cow::Owned returns 0 as the code cannot be the part of text slice.
     pub fn sgr_size(&self) -> usize {
+        if self.is_sgr_owned() {
+            return 0;
+        }
         self.sgr_code.as_ref().map(|c| c.len()).unwrap_or(0)
     }
     pub fn rst_size(&self) -> usize {
@@ -139,11 +144,10 @@ impl<'a> AnsiString<'a> {
                         (text_len, byte_size, is_reset)
                     } else {
                         let slen = text_len + segment.len();
-                        let diff = text_len.saturating_sub(len);
+                        let diff = slen.saturating_sub(len);
                         (
                             min(slen, len),
                             byte_size
-                                + 1
                                 + if diff == 0 {
                                     segment.size()
                                 } else {
