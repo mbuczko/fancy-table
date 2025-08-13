@@ -3,7 +3,7 @@ use charset::{Charset, TableChars};
 mod ansi;
 pub mod charset;
 mod fancy;
-mod padstr;
+mod juststr;
 
 pub enum Layout {
     Slim,
@@ -79,3 +79,9 @@ struct TitleSpec<'a> {
 
 #[doc(hidden)]
 pub use ansi::AnsiString;
+
+#[doc(hidden)]
+pub use juststr::JustedString;
+
+#[doc(hidden)]
+pub use juststr::Justify;

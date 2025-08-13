@@ -1,9 +1,57 @@
+#[allow(unused)]
 mod ansi_string {
+    use fancy_table::AnsiString;
     use fancy_table::assert_codes;
+
+    use crate::ansi_string;
 
     const BLUE: &str = "\x1b[31m";
     const RED: &str = "\x1b[33m";
     const RST: &str = "\x1b[0m";
+
+    #[test]
+    fn ansi_string_no_text() {
+        let input = RED.to_string();
+        let ansi_string = AnsiString::new(&input);
+
+        assert!(ansi_string.is_empty());
+    }
+
+    #[test]
+    fn malformed_codes() {
+        assert_codes!("\x1b31mHello", [
+            {
+                len => 9,
+                txt => "\x1b31mHello",
+                sgr => None,
+                rst => None
+            }
+        ]);
+        assert_codes!("\x1b[31Hello", [
+            {
+                len => 9,
+                txt => "\x1b[31Hello",
+                sgr => None,
+                rst => None
+            }
+        ]);
+        assert_codes!("{RED}Hello\x1b[0", [
+            {
+                len => 8,
+                txt => "Hello\x1b[0",
+                sgr => "{RED}",
+                rst => None
+            }
+        ]);
+        assert_codes!("{RED}Hello[0m", [
+            {
+                len => 8,
+                txt => "Hello[0m",
+                sgr => "{RED}",
+                rst => None
+            }
+        ])
+    }
 
     #[test]
     fn ansi_strings_single_segment() {
@@ -192,8 +240,8 @@ mod ansi_string_get {
         let input = "Hello World";
         let ansi_str = AnsiString::new(input);
 
-        assert_eq!(ansi_str.get(0), "");
-        assert_eq!(ansi_str.get(30), input);
+        assert_eq!(ansi_str.get(0).tupled(), ("", 0));
+        assert_eq!(ansi_str.get(30).tupled(), (input, 11));
     }
 
     #[test]
@@ -201,10 +249,10 @@ mod ansi_string_get {
         let input = "Hello World";
         let ansi_str = AnsiString::new(input);
 
-        assert_eq!(ansi_str.get(5), "Hello");
-        assert_eq!(ansi_str.get(11), "Hello World");
-        assert_eq!(ansi_str.get(0), "");
-        assert_eq!(ansi_str.get(20), "Hello World");
+        assert_eq!(ansi_str.get(0).tupled(), ("", 0));
+        assert_eq!(ansi_str.get(5).tupled(), ("Hello", 5));
+        assert_eq!(ansi_str.get(11).tupled(), ("Hello World", 11));
+        assert_eq!(ansi_str.get(20).tupled(), ("Hello World", 11));
     }
 
     #[test]
@@ -212,9 +260,15 @@ mod ansi_string_get {
         let input = format!("{RED}Hello{RST} World");
         let ansi_str = AnsiString::new(&input);
 
-        assert_eq!(ansi_str.get(5), format!("{RED}Hello{RST}"));
-        assert_eq!(ansi_str.get(3), format!("{RED}Hel"));
-        assert_eq!(ansi_str.get(11), format!("{RED}Hello{RST} World"));
+        assert_eq!(ansi_str.get(3).tupled(), (format!("{RED}Hel").as_str(), 3));
+        assert_eq!(
+            ansi_str.get(5).tupled(),
+            (format!("{RED}Hello{RST}").as_str(), 5)
+        );
+        assert_eq!(
+            ansi_str.get(11).tupled(),
+            (format!("{RED}Hello{RST} World").as_str(), 11)
+        );
     }
 
     #[test]
@@ -222,9 +276,9 @@ mod ansi_string_get {
         let input = "🦀foo🦀bar";
         let ansi_str = AnsiString::new(input);
 
-        assert_eq!(ansi_str.get(3), "🦀fo");
-        assert_eq!(ansi_str.get(5), "🦀foo🦀");
-        assert_eq!(ansi_str.get(8), "🦀foo🦀bar");
+        assert_eq!(ansi_str.get(3).tupled(), ("🦀fo", 3));
+        assert_eq!(ansi_str.get(5).tupled(), ("🦀foo🦀", 5));
+        assert_eq!(ansi_str.get(8).tupled(), ("🦀foo🦀bar", 8));
     }
 
     #[test]
@@ -251,9 +305,22 @@ mod ansi_string_get {
     #[test]
     fn get_with_owned_sgr() {
         let input = "Hello World";
-        let ansi_str = AnsiString::new(input).with_sgr(RED.to_string());
+        let ansi_str = AnsiString::new(input).with_sgr(Some(RED.to_string()));
 
         assert_eq!(ansi_str.get(5), format!("{RED}Hello"));
         assert_eq!(ansi_str.get(11), format!("{RED}Hello World"));
+    }
+
+    #[test]
+    fn get_with_appended_strings() {
+        let str = "Hello  World";
+        let splits = str.split(' ').collect::<Vec<_>>();
+        let mut input_1 = AnsiString::new(splits[0]);
+        let input_2 = AnsiString::new(splits[1]);
+        let input_3 = AnsiString::new(splits[2]);
+
+        input_1.append(input_2);
+        input_1.append(input_3);
+        assert_eq!(input_1.get(12).tupled(), (str, 12));
     }
 }

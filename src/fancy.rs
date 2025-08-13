@@ -2,7 +2,7 @@ use crate::{
     Align, ColSpec, FancyTable, FancyTableBuilder, FancyTableOpts, Layout, Overflow, Separator,
     TitleAlign, TitleSpec,
     charset::Charset,
-    padstr::{Pad, PadStr},
+    juststr::{JustedString, Justify},
 };
 
 const DEFAULT_COLUMN_WIDTH: usize = 10;
@@ -218,15 +218,15 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
             .map(|(i, s)| {
                 let col = self.columns.get(i).unwrap();
                 let pad = match col.align {
-                    Align::Left => Pad::Right,
-                    Align::Right => Pad::Left,
-                    Align::Center => Pad::Center,
+                    Align::Left => Justify::Left,
+                    Align::Right => Justify::Right,
+                    Align::Center => Justify::Center,
                 };
                 match col.overflow {
-                    Overflow::Truncate => PadStr::truncating(s.as_ref()),
-                    Overflow::Wrap => PadStr::wrapping(s.as_ref()),
+                    Overflow::Truncate => JustedString::truncating(s.as_ref()),
+                    Overflow::Wrap => JustedString::wrapping(s.as_ref()),
                 }
-                .paddify(
+                .justify(
                     col.width.saturating_sub(2 * self.padding),
                     col.max_lines,
                     pad,

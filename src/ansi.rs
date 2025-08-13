@@ -1,30 +1,48 @@
-use std::{borrow::Cow, cmp::min, fmt};
+use std::{borrow::Cow, cmp::min, fmt, ops::Deref};
 
-use regex::Regex;
-
-#[derive(Debug)]
-enum MatchLike<'t> {
-    Real(regex::Match<'t>),
-    Synth(usize),
+#[derive(PartialEq)]
+enum AnsiToken {
+    Escape,
+    Opening,
+    Code,
 }
 
-impl<'t> MatchLike<'t> {
-    fn start(&self) -> usize {
-        match self {
-            Self::Real(m) => m.start(),
-            Self::Synth(start) => *start,
-        }
+#[derive(Debug)]
+pub struct AnsiSlice<'a> {
+    pub slice: Cow<'a, str>,
+    pub len: usize,
+    pub needs_rst: bool,
+}
+
+impl<'a> Deref for AnsiSlice<'a> {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.slice.as_ref()
     }
-    fn len(&self) -> usize {
-        match self {
-            Self::Real(m) => m.len(),
-            Self::Synth(_) => 0,
-        }
+}
+
+impl<'a> PartialEq<&str> for AnsiSlice<'a> {
+    fn eq(&self, other: &&str) -> bool {
+        self.slice.as_ref() == *other
     }
-    fn as_str(&self) -> &'t str {
-        match self {
-            Self::Real(m) => m.as_str(),
-            Self::Synth(_) => "",
+}
+
+impl<'a> PartialEq<String> for AnsiSlice<'a> {
+    fn eq(&self, other: &String) -> bool {
+        self.slice.as_ref() == other.as_str()
+    }
+}
+
+impl<'a> AnsiSlice<'a> {
+    pub fn tupled(&'a self) -> (&'a str, usize) {
+        (self.slice.as_ref(), self.len)
+    }
+
+    pub fn owned(self) -> String {
+        match self.slice {
+            Cow::Owned(text) => text,
+            Cow::Borrowed(text) => text.to_string(),
         }
     }
 }
@@ -38,6 +56,9 @@ pub struct AnsiSegment<'a> {
     pub sgr_code: Option<Cow<'a, str>>,
     pub rst_code: Option<Cow<'a, str>>,
     pub text: &'a str,
+
+    /// is this initial segment of the string?
+    is_initial: bool,
 }
 
 #[derive(Debug, Default)]
@@ -59,10 +80,18 @@ impl<'a> fmt::Display for AnsiSegment<'a> {
 
 impl<'a> AnsiSegment<'a> {
     pub fn len(&self) -> usize {
-        self.text.chars().count()
+        self.text.chars().count() + self.is_initial as usize
     }
+
+    /// Returns a byte-size of segment.
+    ///
+    /// Size is calculated based on following elements:
+    /// - text size (in bytes)
+    /// - both SGR and reset codes size
+    /// - truthy is_initial flag adds +1 to the size as it denotes a space separating
+    ///   this segments from the previous one.
     pub fn size(&self) -> usize {
-        self.text.len() + self.sgr_size() + self.rst_size()
+        self.text.len() + self.sgr_size() + self.rst_size() + self.is_initial as usize
     }
     pub fn has_sgr_code(&self) -> bool {
         self.sgr_code.is_some()
@@ -88,11 +117,13 @@ impl<'a> AnsiSegment<'a> {
 
 impl<'a> AnsiString<'a> {
     pub fn new(input: &'a str) -> Self {
-        let regex = Regex::new(r"\x1b\[[0-9;]*m").unwrap();
-        build_ansi_string(regex, input)
+        build_ansi_string(input)
     }
-    pub fn with_sgr(mut self, codes: String) -> Self {
-        if let Some(seg) = self.segments.first_mut() {
+    pub fn with_sgr(mut self, codes: Option<String>) -> Self {
+        if let Some(codes) = codes
+            && !codes.is_empty()
+            && let Some(seg) = self.segments.first_mut()
+        {
             seg.sgr_code = Some(Cow::Owned(codes))
         }
         self
@@ -103,8 +134,17 @@ impl<'a> AnsiString<'a> {
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
-    pub fn append(&mut self, str: AnsiString<'a>) {
-        self.len += str.len() + !self.is_empty() as usize;
+    pub fn append(&mut self, mut str: AnsiString<'a>) {
+        if !self.segments.is_empty()
+            && let Some(seg) = str.segments.first_mut()
+        {
+            // appended string cannot start with Cow::Owned SGR.
+            assert!(!seg.is_sgr_owned());
+
+            seg.is_initial = true;
+            self.len += 1;
+        }
+        self.len += str.len();
         self.segments.extend(str.segments);
     }
     pub fn len(&self) -> usize {
@@ -135,8 +175,8 @@ impl<'a> AnsiString<'a> {
     /// will simply be a sub-slice of the AnsiString. The only case when an owned variant is returned
     /// is when the initial SGR code (stored in the first segment) was explicitly set using the
     /// `with_sgr` function during AnsiString creation.
-    pub fn get(&self, len: usize) -> Cow<'a, str> {
-        let (_, bytes, _needs_rst) =
+    pub fn get(&self, len: usize) -> AnsiSlice<'a> {
+        let (text_len, bytes, needs_rst) =
             self.segments
                 .iter()
                 .fold((0, 0, true), |(text_len, byte_size, is_reset), segment| {
@@ -168,15 +208,23 @@ impl<'a> AnsiString<'a> {
             let str =
                 unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(ptr, bytes)) };
 
-            return if let Some(sgr) = seg.sgr_code.as_ref()
-                && seg.is_sgr_owned()
-            {
-                Cow::Owned(format!("{sgr}{str}"))
-            } else {
-                Cow::Borrowed(str)
+            return AnsiSlice {
+                slice: if let Some(sgr) = seg.sgr_code.as_ref()
+                    && seg.is_sgr_owned()
+                {
+                    Cow::Owned(format!("{sgr}{str}"))
+                } else {
+                    Cow::Borrowed(str)
+                },
+                len: text_len,
+                needs_rst,
             };
         }
-        Cow::Borrowed("")
+        AnsiSlice {
+            slice: Cow::Borrowed(""),
+            len: 0,
+            needs_rst: false,
+        }
     }
 
     fn slice_ptr(&self) -> Option<(*const u8, &AnsiSegment<'a>)> {
@@ -191,46 +239,84 @@ impl<'a> AnsiString<'a> {
     }
 }
 
-fn is_rst(code: &str) -> bool {
-    code == "\x1b[0m"
-}
-
-fn build_ansi_string<'a>(regex: Regex, input: &'a str) -> AnsiString<'a> {
+pub fn build_ansi_string<'a>(input: &'a str) -> AnsiString<'a> {
     let mut result = AnsiString::default();
-    let mut last_code = (0, 0, false); // pos, len, is_reset?
+    let mut expected = AnsiToken::Escape;
+    let mut last_code = (0, 0, false); // start, end, is_reset
+    let mut sequence;
 
-    for mat in regex
-        .find_iter(input)
-        .map(MatchLike::Real)
-        .chain(std::iter::once(MatchLike::Synth(input.len())))
-    {
-        let code_start = mat.start();
-        let code_len = mat.len();
-        let is_reset = is_rst(mat.as_str());
+    let mut current_code_start = 0;
+    let mut text_byte_size: usize = 0;
 
-        let (last_code_pos, last_code_len, last_code_is_reset) = last_code;
-        let last_code_end = last_code_pos + last_code_len;
+    for (pos, ch) in input.char_indices() {
+        text_byte_size += ch.len_utf8();
+        match ch {
+            '\x1b' if expected == AnsiToken::Escape => {
+                expected = AnsiToken::Opening;
+                current_code_start = pos;
+            }
+            '[' if expected == AnsiToken::Opening => expected = AnsiToken::Code,
+            'm' if expected == AnsiToken::Code => {
+                // Valid SGR sequence terminator
+                sequence = &input[current_code_start..pos + 1];
+                text_byte_size = text_byte_size.saturating_sub(sequence.len());
 
-        last_code = if last_code_end < code_start {
-            result.push_segment(AnsiSegment {
-                text: &input[last_code_end..code_start],
-                sgr_code: if !last_code_is_reset && last_code_len > 0 {
-                    Some(Cow::Borrowed(&input[last_code_pos..last_code_end]))
-                } else {
-                    None
-                },
-                rst_code: if is_reset {
-                    Some(Cow::Borrowed(mat.as_str()))
-                } else {
-                    None
-                },
-            });
-            (code_start, code_len, is_reset)
-        } else if last_code_is_reset {
-            (code_start, code_len, is_reset)
-        } else {
-            (last_code_pos, last_code_len + code_len, is_reset)
+                let is_reset = sequence == "\x1b[0m";
+                let is_text = text_byte_size > 0;
+                let (last_code_start, last_code_end, was_reset) = last_code;
+
+                // Chunk of text found
+                if is_text {
+                    result.push_segment(AnsiSegment {
+                        text: &input[last_code_end..last_code_end + text_byte_size],
+                        sgr_code: if !was_reset && last_code_end > last_code_start {
+                            Some(Cow::Borrowed(&input[last_code_start..last_code_end]))
+                        } else {
+                            None
+                        },
+                        rst_code: if is_reset {
+                            Some(Cow::Borrowed(sequence))
+                        } else {
+                            None
+                        },
+                        is_initial: false,
+                    });
+                }
+                last_code = (
+                    if is_text || was_reset {
+                        current_code_start
+                    } else {
+                        last_code_start
+                    },
+                    pos + 1,
+                    is_reset,
+                );
+                text_byte_size = 0;
+                expected = AnsiToken::Escape
+            }
+            '0'..='9' | ';' | ':' if expected == AnsiToken::Code => {
+                continue;
+            }
+            _ => {
+                // Invalid character - this is not a valid SGR sequence
+            }
         }
+    }
+
+    // Final text block not ended with a code.
+    // Note, input might be just an empty string. This is to handle this case too.
+    if text_byte_size > 0 || input.is_empty() {
+        let seg = AnsiSegment {
+            sgr_code: if !last_code.2 && last_code.0 != last_code.1 {
+                Some(Cow::Borrowed(&input[last_code.0..last_code.1]))
+            } else {
+                None
+            },
+            rst_code: None,
+            text: &input[last_code.1..],
+            is_initial: false,
+        };
+        result.push_segment(seg)
     }
     result
 }
