@@ -100,7 +100,7 @@ mod test {
     fn justify_line_with_wrapping_with_newlines_and_ansi_codes() {
         let js = JustedString::wrapping("\x1b[31mAla\nkot\x1b[0m");
         let lines = js.justify(4, 5, Justify::Left);
-        assert_eq!(lines, vec!["\x1b[31mAla ", "\x1b[31mkot\x1b[0m ",]);
+        assert_eq!(lines, vec!["\x1b[31mAla \x1b[0m", "\x1b[31mkot\x1b[0m ",]);
     }
 
     #[test]
@@ -110,8 +110,8 @@ mod test {
         assert_eq!(
             lines,
             vec![
-                "\x1b[31mAla ma ",
-                "\x1b[31mkota   ",
+                "\x1b[31mAla ma \x1b[0m",
+                "\x1b[31mkota   \x1b[0m",
                 "\x1b[31mA kot\x1b[0m  ",
                 "ma Alę "
             ]

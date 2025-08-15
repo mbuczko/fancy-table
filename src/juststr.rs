@@ -86,7 +86,7 @@ impl<'a> JustedString<'a> {
                 // should be reapplied at the start of the new line.
                 let c2c = agg.codes_to_continue();
 
-                bag.push_back(self.wrap_with_padding(agg, hspace, &pad));
+                bag.push_back(self.wrap_with_paddings(agg, hspace, &pad));
                 agg = ansi_string.with_sgr(Some(c2c))
             } else {
                 agg.append(ansi_string)
@@ -96,7 +96,7 @@ impl<'a> JustedString<'a> {
                 // also requires formatting code to be reapplied in new line.
                 c2c = Some(agg.codes_to_continue());
 
-                bag.push_back(self.wrap_with_padding(agg, hspace, &pad));
+                bag.push_back(self.wrap_with_paddings(agg, hspace, &pad));
                 agg = AnsiString::default();
             }
             if bag.len() == vspace {
@@ -107,39 +107,39 @@ impl<'a> JustedString<'a> {
     }
 
     /// Justifies text within the given horizontal space, accounting for ANSI escape codes.
-    fn wrap_with_padding(&self, s: AnsiString, hspace: usize, pad: &Justify) -> String {
+    fn wrap_with_paddings(&self, s: AnsiString, hspace: usize, pad: &Justify) -> String {
         let slice = s.get(hspace);
         let text = &*slice;
         let text_len = slice.len;
+        let needs_rst = slice.needs_rst;
+        let rst_code = "\x1b[0m";
 
         if text_len >= hspace {
             return slice.owned();
         }
 
         let padding_needed = hspace - text_len;
+        let mut result = String::with_capacity(
+            text.len() + padding_needed + (needs_rst as usize * rst_code.len()),
+        );
 
         match pad {
             Justify::Left => {
-                let mut result = String::with_capacity(text.len() + padding_needed);
                 result.push_str(text);
                 for _ in 0..padding_needed {
                     result.push(' ');
                 }
-                result
             }
             Justify::Right => {
-                let mut result = String::with_capacity(text.len() + padding_needed);
                 for _ in 0..padding_needed {
                     result.push(' ');
                 }
                 result.push_str(text);
-                result
             }
             Justify::Center => {
                 let left_padding = padding_needed / 2;
                 let right_padding = padding_needed - left_padding;
 
-                let mut result = String::with_capacity(text.len() + padding_needed);
                 for _ in 0..left_padding {
                     result.push(' ');
                 }
@@ -147,8 +147,11 @@ impl<'a> JustedString<'a> {
                 for _ in 0..right_padding {
                     result.push(' ');
                 }
-                result
             }
         }
+        if needs_rst {
+            result.push_str(rst_code);
+        }
+        result
     }
 }

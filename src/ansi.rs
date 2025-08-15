@@ -173,7 +173,7 @@ impl<'a> AnsiString<'a> {
     /// is when the initial SGR code (stored in the first segment) was explicitly set using the
     /// `with_sgr` function during AnsiString creation.
     pub fn get(&self, len: usize) -> AnsiSlice<'a> {
-        let (text_len, bytes, needs_rst) =
+        let (text_len, bytes, is_terminating_rst) =
             self.segments
                 .iter()
                 .fold((0, 0, true), |(text_len, byte_size, is_reset), segment| {
@@ -214,7 +214,7 @@ impl<'a> AnsiString<'a> {
                     Cow::Borrowed(str)
                 },
                 len: text_len,
-                needs_rst,
+                needs_rst: !is_terminating_rst,
             };
         }
         AnsiSlice {

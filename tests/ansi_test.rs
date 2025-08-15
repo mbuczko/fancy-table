@@ -5,8 +5,8 @@ mod ansi_string {
 
     use crate::ansi_string;
 
-    const BLUE: &str = "\x1b[31m";
-    const RED: &str = "\x1b[33m";
+    const BLUE: &str = "\x1b[34m";
+    const RED: &str = "\x1b[31m";
     const RST: &str = "\x1b[0m";
 
     #[test]
@@ -231,8 +231,8 @@ mod ansi_string {
 mod ansi_string_get {
     use fancy_table::AnsiString;
 
-    const RED: &str = "\x1b[33m";
-    const BLUE: &str = "\x1b[31m";
+    const BLUE: &str = "\x1b[34m";
+    const RED: &str = "\x1b[31m";
     const RST: &str = "\x1b[0m";
 
     #[test]
@@ -322,5 +322,28 @@ mod ansi_string_get {
         input_1.append(input_2);
         input_1.append(input_3);
         assert_eq!(input_1.get(12).tupled(), (str, 12));
+    }
+
+    #[test]
+    fn get_terminated_reset_with_no_ansi() {
+        let ansi_str = AnsiString::new("Hello World");
+
+        let slice = ansi_str.get(5);
+        assert!(!slice.needs_rst);
+
+        let slice = ansi_str.get(4);
+        assert!(!slice.needs_rst);
+    }
+
+    #[test]
+    fn get_terminated_reset_with_ansi() {
+        let input = format!("{RED}Hello{RST} World");
+        let ansi_str = AnsiString::new(&input);
+
+        let slice = ansi_str.get(5);
+        assert!(!slice.needs_rst);
+
+        let slice = ansi_str.get(4);
+        assert!(slice.needs_rst);
     }
 }
