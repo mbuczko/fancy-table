@@ -324,7 +324,7 @@ pub fn build_ansi_string<'a>(input: &'a str) -> AnsiString<'a> {
 }
 
 #[macro_export]
-macro_rules! assert_codes {
+macro_rules! assert_segments {
         ($string:expr, [$($segment:tt),+]) => {
             {
                 let str = format!($string);
@@ -333,7 +333,7 @@ macro_rules! assert_codes {
                 let mut segment_index = 0;
 
                 $(
-                    assert_codes!(@verify_segment segments[segment_index], $segment);
+                    assert_segments!(@verify_segment segments[segment_index], $segment);
                     segment_index += 1;
                 )+
                     assert_eq!(segments.len(), segment_index, "Expected {} segments, found {}", segment_index, segments.len());
@@ -342,7 +342,7 @@ macro_rules! assert_codes {
         (@verify_segment $seg:expr, { $($field:ident => $value:tt),* }) => {
             let seg = &$seg;
             $(
-                assert_codes!(@check_field seg, $field, $value);
+                assert_segments!(@check_field seg, $field, $value);
             )*
         };
         (@check_field $seg:expr, len, $expected:expr) => {

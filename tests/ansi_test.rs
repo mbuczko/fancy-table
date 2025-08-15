@@ -1,7 +1,7 @@
 #[allow(unused)]
 mod ansi_string {
     use fancy_table::AnsiString;
-    use fancy_table::assert_codes;
+    use fancy_table::assert_segments;
 
     use crate::ansi_string;
 
@@ -19,7 +19,7 @@ mod ansi_string {
 
     #[test]
     fn malformed_codes() {
-        assert_codes!("\x1b31mHello", [
+        assert_segments!("\x1b31mHello", [
             {
                 len => 9,
                 txt => "\x1b31mHello",
@@ -27,7 +27,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("\x1b[31Hello", [
+        assert_segments!("\x1b[31Hello", [
             {
                 len => 9,
                 txt => "\x1b[31Hello",
@@ -35,7 +35,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("{RED}Hello\x1b[0", [
+        assert_segments!("{RED}Hello\x1b[0", [
             {
                 len => 8,
                 txt => "Hello\x1b[0",
@@ -43,7 +43,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("{RED}Hello[0m", [
+        assert_segments!("{RED}Hello[0m", [
             {
                 len => 8,
                 txt => "Hello[0m",
@@ -55,7 +55,7 @@ mod ansi_string {
 
     #[test]
     fn ansi_strings_single_segment() {
-        assert_codes!("Hello", [
+        assert_segments!("Hello", [
             {
                 len => 5,
                 txt => "Hello",
@@ -63,7 +63,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("{RED}Hello", [
+        assert_segments!("{RED}Hello", [
             {
                 len => 5,
                 txt => "Hello",
@@ -71,7 +71,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("Hello{RED}", [
+        assert_segments!("Hello{RED}", [
             {
                 len => 5,
                 txt => "Hello",
@@ -79,7 +79,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("{RED}Hello{RST}", [
+        assert_segments!("{RED}Hello{RST}", [
             {
                 len => 5,
                 txt => "Hello",
@@ -87,7 +87,7 @@ mod ansi_string {
                 rst => "{RST}"
             }
         ]);
-        assert_codes!("{RED}{RST}Hello", [
+        assert_segments!("{RED}{RST}Hello", [
             {
                 len => 5,
                 txt => "Hello",
@@ -95,7 +95,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("Hello{RED}{RST}", [
+        assert_segments!("Hello{RED}{RST}", [
             {
                 len => 5,
                 txt => "Hello",
@@ -103,7 +103,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("Hello{RST}", [
+        assert_segments!("Hello{RST}", [
             {
                 len => 5,
                 txt => "Hello",
@@ -111,7 +111,7 @@ mod ansi_string {
                 rst => "{RST}"
             }
         ]);
-        assert_codes!("{RED}{BLUE}Hello", [
+        assert_segments!("{RED}{BLUE}Hello", [
             {
                 len => 5,
                 txt => "Hello",
@@ -119,7 +119,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("{RST}{RED}{BLUE}{RST}{RED}{BLUE}Hello", [
+        assert_segments!("{RST}{RED}{BLUE}{RST}{RED}{BLUE}Hello", [
             {
                 len => 5,
                 txt => "Hello",
@@ -131,7 +131,7 @@ mod ansi_string {
 
     #[test]
     fn ansi_strings_single_segment_with_unicode() {
-        assert_codes!("🦀Hello🦀", [
+        assert_segments!("🦀Hello🦀", [
             {
                 len => 7,
                 txt => "🦀Hello🦀",
@@ -139,7 +139,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("{RED}🦀Hello🦀", [
+        assert_segments!("{RED}🦀Hello🦀", [
             {
                 len => 7,
                 txt => "🦀Hello🦀",
@@ -147,7 +147,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("🦀Hello🦀{RED}", [
+        assert_segments!("🦀Hello🦀{RED}", [
             {
                 len => 7,
                 txt => "🦀Hello🦀",
@@ -155,7 +155,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("{RED}🦀Hello🦀{RST}", [
+        assert_segments!("{RED}🦀Hello🦀{RST}", [
             {
                 len => 7,
                 txt => "🦀Hello🦀",
@@ -163,7 +163,7 @@ mod ansi_string {
                 rst => "{RST}"
             }
         ]);
-        assert_codes!("{RED}{RST}🦀Hello🦀", [
+        assert_segments!("{RED}{RST}🦀Hello🦀", [
             {
                 len => 7,
                 txt => "🦀Hello🦀",
@@ -171,7 +171,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("🦀Hello🦀{RED}{RST}", [
+        assert_segments!("🦀Hello🦀{RED}{RST}", [
             {
                 len => 7,
                 txt => "🦀Hello🦀",
@@ -183,7 +183,7 @@ mod ansi_string {
 
     #[test]
     fn ansi_strings_multi_segment() {
-        assert_codes!("{RED}Hello{BLUE}World!", [
+        assert_segments!("{RED}Hello{BLUE}World!", [
             {
                 len => 5,
                 txt => "Hello",
@@ -197,7 +197,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("{RED}Hello{RST}🦀World🦀", [
+        assert_segments!("{RED}Hello{RST}🦀World🦀", [
             {
                 len => 5,
                 txt => "Hello",
@@ -211,7 +211,7 @@ mod ansi_string {
                 rst => None
             }
         ]);
-        assert_codes!("{RED}Hello{RST}{BLUE}🦀World🦀", [
+        assert_segments!("{RED}Hello{RST}{BLUE}🦀World🦀", [
             {
                 len => 5,
                 txt => "Hello",
