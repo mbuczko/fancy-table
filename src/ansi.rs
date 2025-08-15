@@ -83,34 +83,32 @@ impl<'a> AnsiSegment<'a> {
         self.text.chars().count() + self.is_initial as usize
     }
 
-    /// Returns a byte-size of segment.
+    /// Returns the byte size of a segment. The size is calculated based on the following components:
     ///
-    /// Size is calculated based on following elements:
-    /// - text size (in bytes)
-    /// - both SGR and reset codes size
-    /// - truthy is_initial flag adds +1 to the size as it denotes a space separating
-    ///   this segments from the previous one.
-    pub fn size(&self) -> usize {
+    ///  - The size of the text (in bytes)
+    ///  - The combined size of both SGR (Select Graphic Rendition) and reset codes
+    ///  - An initial flag that, if true, adds +1 to the size to account for a separating space
+    fn size(&self) -> usize {
         self.text.len() + self.sgr_size() + self.rst_size() + self.is_initial as usize
     }
-    pub fn has_sgr_code(&self) -> bool {
+    fn has_sgr_code(&self) -> bool {
         self.sgr_code.is_some()
     }
-    pub fn has_rst_code(&self) -> bool {
+    fn has_rst_code(&self) -> bool {
         self.rst_code.is_some()
     }
     /// Returns SGR code size in case of Cow::Borrowed variant.
     /// For Cow::Owned returns 0 as the code cannot be the part of text slice.
-    pub fn sgr_size(&self) -> usize {
+    fn sgr_size(&self) -> usize {
         if self.is_sgr_owned() {
             return 0;
         }
         self.sgr_code.as_ref().map(|c| c.len()).unwrap_or(0)
     }
-    pub fn rst_size(&self) -> usize {
+    fn rst_size(&self) -> usize {
         self.rst_code.as_ref().map(|c| c.len()).unwrap_or(0)
     }
-    pub fn is_sgr_owned(&self) -> bool {
+    fn is_sgr_owned(&self) -> bool {
         matches!(self.sgr_code, Some(Cow::Owned(_)))
     }
 }
@@ -147,12 +145,11 @@ impl<'a> AnsiString<'a> {
         self.len += str.len();
         self.segments.extend(str.segments);
     }
+
+    /// Returns the number of visible characters in the string.
+    /// ANSI codes are not counted.
     pub fn len(&self) -> usize {
         self.len
-    }
-    pub fn push_segment(&mut self, segment: AnsiSegment<'a>) {
-        self.len += segment.len() + !self.is_empty() as usize;
-        self.segments.push(segment);
     }
 
     /// Returns an SGR code (or multiple joined codes) that should be applied
@@ -225,6 +222,11 @@ impl<'a> AnsiString<'a> {
             len: 0,
             needs_rst: false,
         }
+    }
+
+    fn push_segment(&mut self, segment: AnsiSegment<'a>) {
+        self.len += segment.len() + !self.is_empty() as usize;
+        self.segments.push(segment);
     }
 
     fn slice_ptr(&self) -> Option<(*const u8, &AnsiSegment<'a>)> {
