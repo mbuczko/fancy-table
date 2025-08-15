@@ -1,6 +1,6 @@
 [package]
 name = "fancy-table"
-version = "0.3.1"
+version = "0.3.2"
 description = "Fancy tables with bells and whistles"
 repository = "https://github.com/mbuczko/fancy-table"
 readme = "README.md"
@@ -8,6 +8,6 @@ authors = ["Michał Buczko"]
 keywords = ["ascii", "table", "cli"]
 categories = ["command-line-interface", "gui"]
 license = "MIT"
-edition = "2021"
+edition = "2024"
 
 [dependencies]

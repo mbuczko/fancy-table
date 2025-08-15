@@ -1,16 +1,17 @@
 # Why Fancy Table?
-Initial motivation was to have an ASCII tables able to display multi-line rows, like JSON snippets. Although there are plenty of similar libraries in the wild, unfortunately none of them handled this case correctly. And this is what differs Fancy Table from competition in a first place.
+The primary motivation behind this project was creating ASCII tables capable of displaying multi-line rows, particularly for content like JSON snippets. While numerous similar libraries exist, none properly handled this use case—which is what distinguishes Fancy Table from its competitors.
 
-Project evolved and during next weeks few other features got implemented to have tables even fancier:
+The project has evolved significantly, with several additional features implemented to create even more sophisticated tables:
 
-- optional title at the top of table, aligned left or right
-- per-column layouts - column may be specified with fixed/slim/expandale width
-- per-column alignment - each column may be specified with its own alignment: left, right or center
-- per column overflow behavior - each column may either truncate or wrap text which does not fit into given column width.
-- customizable character sets: modern, classic, simple or minimal
-- headers with customizable separator
-- customizable (optional) row separators
-- customizable padding
+- Optional table titles with left or right alignment
+- Flexible column layouts supporting fixed, slim, or expandable widths
+- Individual column alignment options (left, right, or center)
+- Configurable column overflow behavior (text truncation or wrapping)
+- Multiple character set styles: modern, classic, simple, or minimal
+- Customizable headers with adjustable separators
+- Optional row separators with full customization
+- Adjustable padding settings
+- Handling ANSI escape codes in table content
 
 ## Installation
 

@@ -1,4 +1,4 @@
-use fancy_table::{charset::Charset, Align, FancyTable, FancyTableOpts, Layout, Separator};
+use fancy_table::{Align, FancyTable, FancyTableOpts, Layout, Separator, charset::Charset};
 
 fn main() {
     let table = FancyTable::create(FancyTableOpts {
