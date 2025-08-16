@@ -1,5 +1,12 @@
 use std::{borrow::Cow, cmp::min, fmt, ops::Deref};
 
+#[derive(PartialEq)]
+enum AnsiToken {
+    Escape,
+    Opening,
+    Code,
+}
+
 #[derive(Debug)]
 pub enum AnsiCode<'a> {
     None,
@@ -31,13 +38,6 @@ impl<'a> AnsiCode<'a> {
             Self::Owned(s) => s.len(),
         }
     }
-}
-
-#[derive(PartialEq)]
-enum AnsiToken {
-    Escape,
-    Opening,
-    Code,
 }
 
 #[derive(Debug)]
@@ -307,6 +307,7 @@ pub fn build_ansi_string<'a>(input: &'a str) -> AnsiString<'a> {
                 // Chunk of text found
                 if is_text {
                     result.push_segment(AnsiSegment {
+                        is_appended: false,
                         text: &input[last_code_end..last_code_end + text_byte_size],
                         sgr_code: if !was_reset && last_code_end > last_code_start {
                             AnsiCode::Borrowed(&input[last_code_start..last_code_end])
@@ -318,7 +319,6 @@ pub fn build_ansi_string<'a>(input: &'a str) -> AnsiString<'a> {
                         } else {
                             AnsiCode::None
                         },
-                        is_appended: false,
                     });
                 }
                 last_code = (
@@ -346,14 +346,14 @@ pub fn build_ansi_string<'a>(input: &'a str) -> AnsiString<'a> {
     // Note, input might be just an empty string. This is to handle this case too.
     if text_byte_size > 0 || input.is_empty() {
         let seg = AnsiSegment {
+            is_appended: false,
+            text: &input[last_code.1..],
             sgr_code: if !last_code.2 && last_code.0 != last_code.1 {
                 AnsiCode::Borrowed(&input[last_code.0..last_code.1])
             } else {
                 AnsiCode::None
             },
             rst_code: AnsiCode::None,
-            text: &input[last_code.1..],
-            is_appended: false,
         };
         result.push_segment(seg)
     }
