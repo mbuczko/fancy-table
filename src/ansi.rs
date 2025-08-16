@@ -1,5 +1,38 @@
 use std::{borrow::Cow, cmp::min, fmt, ops::Deref};
 
+#[derive(Debug)]
+pub enum AnsiCode<'a> {
+    None,
+    Borrowed(&'a str),
+    Owned(Box<str>),
+}
+
+impl<'a> AnsiCode<'a> {
+    pub fn as_ref(&self) -> Option<&str> {
+        match self {
+            Self::None => None,
+            Self::Borrowed(s) => Some(s),
+            Self::Owned(s) => Some(s.as_ref()),
+        }
+    }
+
+    pub fn is_some(&self) -> bool {
+        !matches!(self, Self::None)
+    }
+
+    pub fn is_owned(&self) -> bool {
+        matches!(self, Self::Owned(_))
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Self::None => 0,
+            Self::Borrowed(s) => s.len(),
+            Self::Owned(s) => s.len(),
+        }
+    }
+}
+
 #[derive(PartialEq)]
 enum AnsiToken {
     Escape,
@@ -53,12 +86,12 @@ impl<'a> AnsiSlice<'a> {
 ///
 /// Example: "\x1b[38;2;255;105;180mHot Pink\x1b[0m"
 pub struct AnsiSegment<'a> {
-    pub sgr_code: Option<Cow<'a, str>>,
-    pub rst_code: Option<Cow<'a, str>>,
+    pub sgr_code: AnsiCode<'a>,
+    pub rst_code: AnsiCode<'a>,
     pub text: &'a str,
 
-    /// is this initial segment of the string?
-    is_initial: bool,
+    /// Is this first segment of appended AnsiString?
+    is_appended: bool,
 }
 
 #[derive(Debug, Default)]
@@ -72,15 +105,17 @@ pub struct AnsiString<'a> {
 
 impl<'a> fmt::Display for AnsiSegment<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let sgr = self.sgr_code.as_deref().unwrap_or("");
-        let rst = self.rst_code.as_deref().unwrap_or("");
+        let sgr = self.sgr_code.as_ref().unwrap_or("");
+        let rst = self.rst_code.as_ref().unwrap_or("");
         write!(f, "{}{}{}", sgr, self.text, rst)
     }
 }
 
 impl<'a> AnsiSegment<'a> {
+    /// Return lenght of a segment. If segment is first one of appended
+    /// other AnsiString, includes space separating both strings.
     pub fn len(&self) -> usize {
-        self.text.chars().count() + self.is_initial as usize
+        self.text.chars().count() + self.is_appended as usize
     }
 
     /// Returns the byte size of a segment. The size is calculated based on the following components:
@@ -89,7 +124,7 @@ impl<'a> AnsiSegment<'a> {
     ///  - The combined size of both SGR (Select Graphic Rendition) and reset codes
     ///  - An initial flag that, if true, adds +1 to the size to account for a separating space
     fn size(&self) -> usize {
-        self.text.len() + self.sgr_size() + self.rst_size() + self.is_initial as usize
+        self.text.len() + self.sgr_size() + self.rst_size() + self.is_appended as usize
     }
     fn has_sgr_code(&self) -> bool {
         self.sgr_code.is_some()
@@ -97,19 +132,16 @@ impl<'a> AnsiSegment<'a> {
     fn has_rst_code(&self) -> bool {
         self.rst_code.is_some()
     }
-    /// Returns SGR code size in case of Cow::Borrowed variant.
-    /// For Cow::Owned returns 0 as the code cannot be the part of text slice.
+    /// Returns SGR code size in case of borrowed variant.
+    /// For owned returns 0 as the code cannot be the part of text slice.
     fn sgr_size(&self) -> usize {
-        if self.is_sgr_owned() {
+        if self.sgr_code.is_owned() {
             return 0;
         }
-        self.sgr_code.as_ref().map(|c| c.len()).unwrap_or(0)
+        self.sgr_code.len()
     }
     fn rst_size(&self) -> usize {
-        self.rst_code.as_ref().map(|c| c.len()).unwrap_or(0)
-    }
-    fn is_sgr_owned(&self) -> bool {
-        matches!(self.sgr_code, Some(Cow::Owned(_)))
+        self.rst_code.len()
     }
 }
 
@@ -122,7 +154,7 @@ impl<'a> AnsiString<'a> {
             && !codes.is_empty()
             && let Some(seg) = self.segments.first_mut()
         {
-            seg.sgr_code = Some(Cow::Owned(codes))
+            seg.sgr_code = AnsiCode::Owned(codes.into_boxed_str())
         }
         self
     }
@@ -136,11 +168,16 @@ impl<'a> AnsiString<'a> {
         if !self.segments.is_empty()
             && let Some(seg) = str.segments.first_mut()
         {
-            // appended string cannot start with Cow::Owned SGR.
-            assert!(!seg.is_sgr_owned());
+            // Appended AnsiString cannot start with owned SGR.
+            // The crucial assumption when calculating a subslice in unsafe { ... }
+            // block of `get` function is that all segments (with possible exception
+            // of the first one) are entirely borrowed subslices of original input.
+            // That means, no consecuitve SGR or reset codes may be owned.
+            assert!(!seg.sgr_code.is_owned());
 
-            seg.is_initial = true;
+            // Account for space separating appended AnsiString from the current one
             self.len += 1;
+            seg.is_appended = true;
         }
         self.len += str.len();
         self.segments.extend(str.segments);
@@ -161,7 +198,7 @@ impl<'a> AnsiString<'a> {
             .iter()
             .rev()
             .take_while(|seg| !seg.has_rst_code())
-            .filter_map(|seg| seg.sgr_code.as_ref().map(|c| c.as_ref()))
+            .filter_map(|seg| seg.sgr_code.as_ref())
             .collect::<Vec<_>>();
 
         codes.join("")
@@ -207,7 +244,7 @@ impl<'a> AnsiString<'a> {
 
             return AnsiSlice {
                 slice: if let Some(sgr) = seg.sgr_code.as_ref()
-                    && seg.is_sgr_owned()
+                    && seg.sgr_code.is_owned()
                 {
                     Cow::Owned(format!("{sgr}{str}"))
                 } else {
@@ -231,7 +268,7 @@ impl<'a> AnsiString<'a> {
 
     fn slice_ptr(&self) -> Option<(*const u8, &AnsiSegment<'a>)> {
         if let Some(seg) = self.segments.first() {
-            return if !seg.has_sgr_code() || seg.is_sgr_owned() {
+            return if !seg.has_sgr_code() || seg.sgr_code.is_owned() {
                 Some((seg.text.as_ptr(), seg))
             } else {
                 seg.sgr_code.as_ref().map(|c| (c.as_ptr(), seg))
@@ -272,16 +309,16 @@ pub fn build_ansi_string<'a>(input: &'a str) -> AnsiString<'a> {
                     result.push_segment(AnsiSegment {
                         text: &input[last_code_end..last_code_end + text_byte_size],
                         sgr_code: if !was_reset && last_code_end > last_code_start {
-                            Some(Cow::Borrowed(&input[last_code_start..last_code_end]))
+                            AnsiCode::Borrowed(&input[last_code_start..last_code_end])
                         } else {
-                            None
+                            AnsiCode::None
                         },
                         rst_code: if is_reset {
-                            Some(Cow::Borrowed(sequence))
+                            AnsiCode::Borrowed(sequence)
                         } else {
-                            None
+                            AnsiCode::None
                         },
-                        is_initial: false,
+                        is_appended: false,
                     });
                 }
                 last_code = (
@@ -310,13 +347,13 @@ pub fn build_ansi_string<'a>(input: &'a str) -> AnsiString<'a> {
     if text_byte_size > 0 || input.is_empty() {
         let seg = AnsiSegment {
             sgr_code: if !last_code.2 && last_code.0 != last_code.1 {
-                Some(Cow::Borrowed(&input[last_code.0..last_code.1]))
+                AnsiCode::Borrowed(&input[last_code.0..last_code.1])
             } else {
-                None
+                AnsiCode::None
             },
-            rst_code: None,
+            rst_code: AnsiCode::None,
             text: &input[last_code.1..],
-            is_initial: false,
+            is_appended: false,
         };
         result.push_segment(seg)
     }
@@ -353,16 +390,16 @@ macro_rules! assert_segments {
         };
         (@check_field $seg:expr, sgr, $expected:literal) => {
             let formatted = format!($expected);
-            assert_eq!($seg.sgr_code, Some(std::borrow::Cow::Borrowed(formatted.as_str())));
+            assert_eq!($seg.sgr_code.as_ref(), Some(formatted.as_str()));
         };
         (@check_field $seg:expr, sgr, None) => {
-            assert_eq!($seg.sgr_code, None)
+            assert_eq!($seg.sgr_code.as_ref(), None)
         };
         (@check_field $seg:expr, rst, $expected:literal) => {
             let formatted = format!($expected);
-            assert_eq!($seg.rst_code, Some(std::borrow::Cow::Borrowed(formatted.as_str())));
+            assert_eq!($seg.rst_code.as_ref(), Some(formatted.as_str()));
         };
         (@check_field $seg:expr, rst, None) => {
-            assert_eq!($seg.rst_code, None)
+            assert_eq!($seg.rst_code.as_ref(), None)
         };
     }
