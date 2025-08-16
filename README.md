@@ -17,7 +17,7 @@ The project has evolved significantly, with several additional features implemen
 
 ``` toml
 [dependencies]
-fancy-table = "0.3.1"
+fancy-table = "0.3.2"
 ```
 
 ## Usage
@@ -78,6 +78,6 @@ Fanciness disclaimer: depending on your terminal font quality of final result ma
 To get some more idea how tables may look like, have a look at examples:
 
 ```sh
-# available examples: modern, classic, simple, minimal
+# available examples: colored, modern, classic, simple, minimal
 cargo run --example modern
 ```
