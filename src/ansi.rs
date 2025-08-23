@@ -1,4 +1,17 @@
-use std::{borrow::Cow, cmp::min, fmt, ops::Deref};
+use std::cmp::min;
+
+pub const RST_CODE: &str = "\x1b[0m";
+
+// open SGRs, text slice, total length (excluding ANSI codes), has reset code?, needs reset?
+type AnsiSegment<'a> = (Vec<&'a str>, &'a str, usize, bool, bool);
+
+#[derive(Default)]
+pub struct AnsiString<'a> {
+    pub slice: &'a str,
+    pub c2c: Option<String>,
+    pub len: usize,
+    pub needs_rst: bool,
+}
 
 #[derive(PartialEq)]
 enum AnsiToken {
@@ -7,288 +20,210 @@ enum AnsiToken {
     Code,
 }
 
-#[derive(Debug)]
-pub enum AnsiCode<'a> {
-    None,
-    Borrowed(&'a str),
-    Owned(Box<str>),
-}
-
-impl<'a> AnsiCode<'a> {
-    pub fn as_ref(&self) -> Option<&str> {
-        match self {
-            Self::None => None,
-            Self::Borrowed(s) => Some(s),
-            Self::Owned(s) => Some(s.as_ref()),
-        }
-    }
-
-    pub fn is_some(&self) -> bool {
-        !matches!(self, Self::None)
-    }
-
-    pub fn is_owned(&self) -> bool {
-        matches!(self, Self::Owned(_))
-    }
-
-    pub fn len(&self) -> usize {
-        match self {
-            Self::None => 0,
-            Self::Borrowed(s) => s.len(),
-            Self::Owned(s) => s.len(),
-        }
-    }
+#[derive(PartialEq)]
+pub enum Overflow {
+    WordWrap,
+    Truncate,
 }
 
 #[derive(Debug)]
-pub struct AnsiSlice<'a> {
-    pub slice: Cow<'a, str>,
-    pub len: usize,
-    pub needs_rst: bool,
-}
-
-impl<'a> Deref for AnsiSlice<'a> {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        self.slice.as_ref()
-    }
-}
-
-impl<'a> PartialEq<&str> for AnsiSlice<'a> {
-    fn eq(&self, other: &&str) -> bool {
-        self.slice.as_ref() == *other
-    }
-}
-
-impl<'a> PartialEq<String> for AnsiSlice<'a> {
-    fn eq(&self, other: &String) -> bool {
-        self.slice.as_ref() == other.as_str()
-    }
-}
-
-impl<'a> AnsiSlice<'a> {
-    pub fn tupled(&'a self) -> (&'a str, usize) {
-        (self.slice.as_ref(), self.len)
-    }
-
-    pub fn owned(self) -> String {
-        match self.slice {
-            Cow::Owned(text) => text,
-            Cow::Borrowed(text) => text.to_string(),
-        }
-    }
-}
-
-#[derive(Debug)]
-/// Representation of a single segment of a String with ANSI codes: an optional opening code (SGR) and a reset code.
-/// Each segment contains an optional code only at the starting position and a reset code at the end.
-///
-/// Example: "\x1b[38;2;255;105;180mHot Pink\x1b[0m"
-pub struct AnsiSegment<'a> {
-    pub sgr_code: AnsiCode<'a>,
-    pub rst_code: AnsiCode<'a>,
-    pub text: &'a str,
-
-    /// Is this first segment of appended AnsiString?
-    is_appended: bool,
+enum Segment<'a> {
+    Word(&'a str, usize),
+    Term(&'a str, usize),
 }
 
 #[derive(Debug, Default)]
-/// Represents a string containing ANSI escape codes. The string is internally divided into segments,
-/// where each segment represents a portion of the string with its associated opening SGR (Select Graphic Rendition)
-/// code and corresponding reset code.
-pub struct AnsiString<'a> {
-    len: usize,
-    segments: Vec<AnsiSegment<'a>>,
+struct CodeQueue<'a> {
+    codes_to_continue: Vec<&'a str>,
+    codes_to_collect: Vec<&'a str>,
+    reset_after_get: bool,
 }
 
-impl<'a> fmt::Display for AnsiSegment<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let sgr = self.sgr_code.as_ref().unwrap_or("");
-        let rst = self.rst_code.as_ref().unwrap_or("");
-        write!(f, "{}{}{}", sgr, self.text, rst)
-    }
-}
+impl<'a> CodeQueue<'a> {
+    pub fn codes_to_continue(&mut self) -> Option<String> {
+        let mut seq = None;
+        let count = self.codes_to_continue.len();
 
-impl<'a> AnsiSegment<'a> {
-    /// Return lenght of a segment. If segment is first one of appended
-    /// other AnsiString, includes space separating both strings.
-    pub fn len(&self) -> usize {
-        self.text.chars().count() + self.is_appended as usize
-    }
-
-    /// Returns the byte size of a segment. The size is calculated based on the following components:
-    ///
-    ///  - The size of the text (in bytes)
-    ///  - The combined size of both SGR (Select Graphic Rendition) and reset codes
-    ///  - An initial flag that, if true, adds +1 to the size to account for a separating space
-    fn size(&self) -> usize {
-        self.text.len() + self.sgr_size() + self.rst_size() + self.is_appended as usize
-    }
-    fn has_sgr_code(&self) -> bool {
-        self.sgr_code.is_some()
-    }
-    fn has_rst_code(&self) -> bool {
-        self.rst_code.is_some()
-    }
-    /// Returns SGR code size in case of borrowed variant.
-    /// For owned returns 0 as the code cannot be the part of text slice.
-    fn sgr_size(&self) -> usize {
-        if self.sgr_code.is_owned() {
-            return 0;
+        if count > 0 {
+            let mut codes = String::with_capacity(count);
+            for s in self.codes_to_continue.iter() {
+                codes.push_str(s);
+            }
+            seq = Some(codes)
         }
-        self.sgr_code.len()
+        if self.reset_after_get {
+            self.codes_to_continue.clear();
+            self.reset_after_get = false;
+        }
+        // codes collected become codes to continue in case of line breaks
+        self.codes_to_continue.append(&mut self.codes_to_collect);
+        seq
     }
-    fn rst_size(&self) -> usize {
-        self.rst_code.len()
+    pub fn collect(&mut self, codes: Vec<&'a str>) {
+        self.codes_to_collect.extend(codes);
+    }
+    pub fn clear(&mut self) {
+        self.reset_after_get = true;
+        self.codes_to_collect.clear();
+    }
+    pub fn has_codes_to_continue(&self) -> bool {
+        !self.codes_to_continue.is_empty()
+    }
+}
+
+impl<'a> Segment<'a> {
+    fn text(&self) -> &'a str {
+        match self {
+            Segment::Word(txt, _) | Segment::Term(txt, _) => txt,
+        }
+    }
+    fn pos(&self) -> usize {
+        match self {
+            Segment::Word(_, pos) | Segment::Term(_, pos) => *pos,
+        }
     }
 }
 
 impl<'a> AnsiString<'a> {
-    pub fn new(input: &'a str) -> Self {
-        build_ansi_string(input)
-    }
-    pub fn with_sgr(mut self, codes: Option<String>) -> Self {
-        if let Some(codes) = codes
-            && !codes.is_empty()
-            && let Some(seg) = self.segments.first_mut()
-        {
-            seg.sgr_code = AnsiCode::Owned(codes.into_boxed_str())
+    pub fn build(c2c: Option<String>, slice: &'a str, len: usize, needs_rst: bool) -> Self {
+        Self {
+            slice,
+            len,
+            c2c,
+            needs_rst,
         }
-        self
-    }
-    pub fn segments(&self) -> &[AnsiSegment<'a>] {
-        &self.segments
-    }
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-    pub fn append(&mut self, mut str: AnsiString<'a>) {
-        if !self.segments.is_empty()
-            && let Some(seg) = str.segments.first_mut()
-        {
-            // Appended AnsiString cannot start with owned SGR.
-            // The crucial assumption when calculating a subslice in unsafe { ... }
-            // block of `get` function is that all segments (with possible exception
-            // of the first one) are entirely borrowed subslices of original input.
-            // That means, no consecuitve SGR or reset codes may be owned.
-            assert!(!seg.sgr_code.is_owned());
-
-            // Account for space separating appended AnsiString from the current one
-            self.len += 1;
-            seg.is_appended = true;
-        }
-        self.len += str.len();
-        self.segments.extend(str.segments);
-    }
-
-    /// Returns the number of visible characters in the string.
-    /// ANSI codes are not counted.
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    /// Returns an SGR code (or multiple joined codes) that should be applied
-    /// when continuing text formatting on a text break after the last segment
-    /// of an AnsiString.
-    pub fn codes_to_continue(&self) -> String {
-        let codes = self
-            .segments
-            .iter()
-            .rev()
-            .take_while(|seg| !seg.has_rst_code())
-            .filter_map(|seg| seg.sgr_code.as_ref())
-            .collect::<Vec<_>>();
-
-        codes.join("")
-    }
-
-    /// Returns a substring of the specified length while preserving ANSI codes intact - no ANSI code
-    /// will be corrupted. For performance reasons, returns a Cow<str> since in most cases the result
-    /// will simply be a sub-slice of the AnsiString. The only case when an owned variant is returned
-    /// is when the initial SGR code (stored in the first segment) was explicitly set using the
-    /// `with_sgr` function during AnsiString creation.
-    pub fn get(&self, len: usize) -> AnsiSlice<'a> {
-        let (text_len, bytes, is_terminating_rst) =
-            self.segments
-                .iter()
-                .fold((0, 0, true), |(text_len, byte_size, is_reset), segment| {
-                    if text_len >= len {
-                        (text_len, byte_size, is_reset)
-                    } else {
-                        let slen = text_len + segment.len();
-                        let diff = slen.saturating_sub(len);
-                        (
-                            min(slen, len),
-                            byte_size
-                                + if diff == 0 {
-                                    segment.size()
-                                } else {
-                                    segment.sgr_size()
-                                        + segment
-                                            .text
-                                            .char_indices()
-                                            .nth(segment.len() - diff)
-                                            .map_or(segment.text.len(), |(byte_idx, _)| byte_idx)
-                                },
-                            (segment.has_rst_code() && diff == 0)
-                                || (is_reset && !segment.has_sgr_code()),
-                        )
-                    }
-                });
-
-        if let Some((ptr, seg)) = self.slice_ptr() {
-            let str =
-                unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(ptr, bytes)) };
-
-            return AnsiSlice {
-                slice: if let Some(sgr) = seg.sgr_code.as_ref()
-                    && seg.sgr_code.is_owned()
-                {
-                    Cow::Owned(format!("{sgr}{str}"))
-                } else {
-                    Cow::Borrowed(str)
-                },
-                len: text_len,
-                needs_rst: !is_terminating_rst,
-            };
-        }
-        AnsiSlice {
-            slice: Cow::Borrowed(""),
-            len: 0,
-            needs_rst: false,
-        }
-    }
-
-    fn push_segment(&mut self, segment: AnsiSegment<'a>) {
-        self.len += segment.len() + !self.is_empty() as usize;
-        self.segments.push(segment);
-    }
-
-    fn slice_ptr(&self) -> Option<(*const u8, &AnsiSegment<'a>)> {
-        if let Some(seg) = self.segments.first() {
-            return if !seg.has_sgr_code() || seg.sgr_code.is_owned() {
-                Some((seg.text.as_ptr(), seg))
-            } else {
-                seg.sgr_code.as_ref().map(|c| (c.as_ptr(), seg))
-            };
-        }
-        None
     }
 }
 
-pub fn build_ansi_string<'a>(input: &'a str) -> AnsiString<'a> {
-    let mut result = AnsiString::default();
-    let mut expected = AnsiToken::Escape;
-    let mut last_code = (0, 0, false); // start, end, is_reset
-    let mut sequence;
+pub fn build_string<'a>(
+    input: &'a str,
+    hspace: usize,
+    vspace: usize,
+    overflow: &Overflow,
+) -> Vec<AnsiString<'a>> {
+    if hspace == 0 {
+        return vec![];
+    }
+    // stack of collected ANSI codes
+    let mut queue = CodeQueue::default();
+    let mut result = Vec::with_capacity(vspace);
+    let mut str_pos = 0;
+    let mut end_pos = 0;
+    let mut txt_len = 0;
 
+    // should line be terminated with reset code?
+    let mut line_reset = false;
+
+    let segments = build_segments(input, overflow);
+    let count = segments.len();
+
+    for (i, seg) in segments.iter().enumerate() {
+        let is_last_str = i == count - 1;
+        let is_init_str = txt_len == 0;
+        let is_term_str = matches!(seg, Segment::Term(_, _));
+
+        let (new_codes, txt, total_len, has_rst, needs_rst) = parse_segment(seg, hspace);
+        let len = min(total_len, hspace);
+        let eol = is_last_str || is_term_str;
+
+        // Separator length: 0 for first segment in line, 1 otherwise.
+        let sep_len = (txt_len > 0) as usize;
+
+        if txt_len == 0 {
+            str_pos = seg.pos();
+            end_pos = str_pos;
+            line_reset = queue.has_codes_to_continue();
+        }
+
+        // If there is no more space for a segment then wrap-or-truncate the line
+        if !is_init_str && txt_len + total_len + sep_len > hspace {
+            result.push(AnsiString::build(
+                queue.codes_to_continue(),
+                &input[str_pos..end_pos],
+                txt_len,
+                line_reset,
+            ));
+            // Constituate current segment as initial in the new line
+            str_pos = seg.pos();
+            end_pos = str_pos + txt.len();
+            txt_len = len;
+        } else {
+            end_pos += txt.len() + sep_len;
+            txt_len += len + sep_len;
+        }
+
+        // If segment contains reset code at any position wipe out
+        // all ANSI codes collected up to the reset code so far...
+        if has_rst {
+            queue.clear();
+            line_reset = needs_rst;
+        } else {
+            line_reset = line_reset || needs_rst;
+        }
+
+        // ...and collect all the codes coming right after the reset code
+        queue.collect(new_codes);
+
+        if result.len() < vspace && (txt_len == hspace || eol) {
+            result.push(AnsiString::build(
+                queue.codes_to_continue(),
+                &input[str_pos..end_pos],
+                txt_len,
+                line_reset,
+            ));
+            txt_len = 0;
+        }
+
+        // Bail out early if there is no more vertical space available
+        if result.len() == vspace {
+            return result;
+        }
+    }
+    result
+}
+
+fn build_segments<'a>(input: &'a str, overflow: &Overflow) -> Vec<Segment<'a>> {
+    let input_ptr = input.as_ptr();
+    match overflow {
+        Overflow::Truncate => input
+            .lines()
+            .map(|s| Segment::Term(s, s.as_ptr() as usize - input_ptr as usize))
+            .collect::<Vec<_>>(),
+        Overflow::WordWrap => input
+            .lines()
+            .flat_map(|s| {
+                let mut iter = s.split(' ').peekable();
+
+                std::iter::from_fn(move || {
+                    iter.next().map(|slice| {
+                        let pos = slice.as_ptr() as usize - input_ptr as usize;
+
+                        if iter.peek().is_none() {
+                            Segment::Term(slice, pos)
+                        } else {
+                            Segment::Word(slice, pos)
+                        }
+                    })
+                })
+            })
+            .collect::<Vec<_>>(),
+    }
+}
+
+fn parse_segment<'a>(segment: &'a Segment, len: usize) -> AnsiSegment<'a> {
+    let mut codes = Vec::new();
+    let mut expected = AnsiToken::Escape;
     let mut current_code_start = 0;
-    let mut text_byte_size: usize = 0;
+
+    let mut txt_len: usize = 0;
+    let mut end_pos = None;
+    let mut has_rst = false;
+    let mut needs_rst = false;
+    let mut stop_collecting = false;
+
+    let input = segment.text();
 
     for (pos, ch) in input.char_indices() {
-        text_byte_size += ch.len_utf8();
         match ch {
             '\x1b' if expected == AnsiToken::Escape => {
                 expected = AnsiToken::Opening;
@@ -297,109 +232,97 @@ pub fn build_ansi_string<'a>(input: &'a str) -> AnsiString<'a> {
             '[' if expected == AnsiToken::Opening => expected = AnsiToken::Code,
             'm' if expected == AnsiToken::Code => {
                 // Valid SGR sequence terminator
-                sequence = &input[current_code_start..pos + 1];
-                text_byte_size = text_byte_size.saturating_sub(sequence.len());
+                let sequence = &input[current_code_start..pos + 1];
+                let seq_rst = sequence == RST_CODE;
 
-                let is_reset = sequence == "\x1b[0m";
-                let is_text = text_byte_size > 0;
-                let (last_code_start, last_code_end, was_reset) = last_code;
+                has_rst = seq_rst;
 
-                // Chunk of text found
-                if is_text {
-                    result.push_segment(AnsiSegment {
-                        is_appended: false,
-                        text: &input[last_code_end..last_code_end + text_byte_size],
-                        sgr_code: if !was_reset && last_code_end > last_code_start {
-                            AnsiCode::Borrowed(&input[last_code_start..last_code_end])
-                        } else {
-                            AnsiCode::None
-                        },
-                        rst_code: if is_reset {
-                            AnsiCode::Borrowed(sequence)
-                        } else {
-                            AnsiCode::None
-                        },
-                    });
+                if seq_rst {
+                    codes.clear();
+                } else {
+                    codes.push(sequence);
                 }
-                last_code = (
-                    if is_text || was_reset {
-                        current_code_start
-                    } else {
-                        last_code_start
-                    },
-                    pos + 1,
-                    is_reset,
-                );
-                text_byte_size = 0;
+                if !stop_collecting {
+                    needs_rst = !has_rst;
+                    if end_pos.is_some() {
+                        end_pos = Some(pos + 1);
+                    }
+                }
                 expected = AnsiToken::Escape
             }
             '0'..='9' | ';' | ':' if expected == AnsiToken::Code => {
                 continue;
             }
+            _ if end_pos.is_none() => {
+                txt_len += 1;
+
+                if txt_len == len {
+                    end_pos = Some(pos + ch.len_utf8());
+                }
+                expected = AnsiToken::Escape;
+            }
             _ => {
-                // Invalid character - this is not a valid SGR sequence
+                stop_collecting = true;
+                expected = AnsiToken::Escape;
+                // consume, do nothing
             }
         }
     }
-
-    // Final text block not ended with a code.
-    // Note, input might be just an empty string. This is to handle this case too.
-    if text_byte_size > 0 || input.is_empty() {
-        let seg = AnsiSegment {
-            is_appended: false,
-            text: &input[last_code.1..],
-            sgr_code: if !last_code.2 && last_code.0 != last_code.1 {
-                AnsiCode::Borrowed(&input[last_code.0..last_code.1])
-            } else {
-                AnsiCode::None
-            },
-            rst_code: AnsiCode::None,
-        };
-        result.push_segment(seg)
-    }
-    result
+    let slice = &input[0..end_pos.unwrap_or(input.len())];
+    (codes, slice, txt_len, has_rst, needs_rst)
 }
 
 #[macro_export]
-macro_rules! assert_segments {
-        ($string:expr, [$($segment:tt),+]) => {
+macro_rules! assert_ansi_string {
+        ($string:expr, $hspace:expr, $vspace:expr, $overflow:expr, []) => {
+            let str = format!($string);
+            let segments = $crate::ansi::build_string(&str, $hspace, $vspace, &$overflow);
+
+            assert!(segments.is_empty());
+        };
+        ($string:expr, $hspace:expr, $vspace:expr, $overflow:expr, [$($segment:tt),*]) => {
             {
                 let str = format!($string);
-                let ansi = $crate::AnsiString::new(&str);
-                let segments = ansi.segments();
+                let segments = $crate::ansi::build_string(&str, $hspace, $vspace, &$overflow);
                 let mut segment_index = 0;
 
                 $(
-                    assert_segments!(@verify_segment segments[segment_index], $segment);
+                    assert_ansi_string!(@verify_segment segments[segment_index], $segment);
                     segment_index += 1;
                 )+
-                    assert_eq!(segments.len(), segment_index, "Expected {} segments, found {}", segment_index, segments.len());
+                assert_eq!(segments.len(), segment_index, "Expected {} segments, found {}", segment_index, segments.len());
             }
         };
         (@verify_segment $seg:expr, { $($field:ident => $value:tt),* }) => {
             let seg = &$seg;
             $(
-                assert_segments!(@check_field seg, $field, $value);
+                assert_ansi_string!(@check_field seg, $field, $value);
             )*
         };
         (@check_field $seg:expr, len, $expected:expr) => {
-            assert_eq!($seg.len(), $expected);
+            assert_eq!($seg.len, $expected);
         };
-        (@check_field $seg:expr, txt, $expected:expr) => {
-            assert_eq!($seg.text, $expected);
-        };
-        (@check_field $seg:expr, sgr, $expected:literal) => {
+        (@check_field $seg:expr, txt, $expected:literal) => {
             let formatted = format!($expected);
-            assert_eq!($seg.sgr_code.as_ref(), Some(formatted.as_str()));
+            assert_eq!($seg.slice.as_ref(), formatted);
         };
-        (@check_field $seg:expr, sgr, None) => {
-            assert_eq!($seg.sgr_code.as_ref(), None)
-        };
-        (@check_field $seg:expr, rst, $expected:literal) => {
-            let formatted = format!($expected);
-            assert_eq!($seg.rst_code.as_ref(), Some(formatted.as_str()));
-        };
-        (@check_field $seg:expr, rst, None) => {
-            assert_eq!($seg.rst_code.as_ref(), None)
+        (@check_field $seg:expr, rst, $expected:expr) => {
+            assert_eq!($seg.needs_rst, $expected);
         };
     }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_codes_queue() {
+        let mut queue = CodeQueue::default();
+        queue.collect(vec!["a", "b", "c"]);
+
+        assert!(!queue.has_codes_to_continue());
+        assert_eq!(queue.codes_to_continue(), None);
+        assert_eq!(queue.codes_to_continue(), Some(String::from("abc")));
+        assert!(queue.has_codes_to_continue());
+    }
+}

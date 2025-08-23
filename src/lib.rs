@@ -1,6 +1,6 @@
 use charset::{Charset, TableChars};
 
-mod ansi;
+pub mod ansi;
 pub mod charset;
 mod fancy;
 mod juststr;
@@ -76,9 +76,6 @@ struct TitleSpec<'a> {
     title: &'a str,
     align: TitleAlign,
 }
-
-#[doc(hidden)]
-pub use ansi::AnsiString;
 
 #[doc(hidden)]
 pub use juststr::JustedString;
