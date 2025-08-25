@@ -95,6 +95,23 @@ impl<'a> AnsiString<'a> {
     }
 }
 
+/// Processes input text with ANSI codes into formatted lines that fit within specified dimensions.
+///
+/// Takes raw text containing ANSI escape sequences and breaks it into lines that respect
+/// both horizontal (character) and vertical (line) constraints while preserving ANSI formatting.
+///
+/// # Arguments
+/// * `input` - Raw input text that may contain ANSI escape sequences
+/// * `hspace` - Maximum characters per line (excluding ANSI codes)
+/// * `vspace` - Maximum number of lines to generate
+/// * `overflow` - Strategy for handling text that exceeds horizontal space
+///
+/// # Returns
+/// Vector of `AnsiString` objects, each representing a formatted line with:
+/// - Original text slice (may include ANSI codes)
+/// - Continuation codes needed to maintain formatting across line breaks
+/// - Actual display length (excluding ANSI codes)
+/// - Whether the line needs a reset code for proper formatting
 pub fn build_string<'a>(
     input: &'a str,
     hspace: usize,
@@ -182,6 +199,10 @@ pub fn build_string<'a>(
     result
 }
 
+/// Splits input string into segments for parsing based on overflow strategy.
+///
+/// - `Overflow::Truncate`: Splits only on newlines, creating one segment per line
+/// - `Overflow::WordWrap`: Splits on both newlines and spaces for word-based wrapping
 fn build_segments<'a>(input: &'a str, overflow: &Overflow) -> Vec<Segment<'a>> {
     let input_ptr = input.as_ptr();
     match overflow {
@@ -210,6 +231,14 @@ fn build_segments<'a>(input: &'a str, overflow: &Overflow) -> Vec<Segment<'a>> {
     }
 }
 
+/// Parses a single text segment, extracting ANSI codes and enforcing character limits.
+///
+/// Returns a tuple containing:
+/// - Vector of ANSI escape sequences found in the segment
+/// - Text slice (including ANSI codes) truncated to fit the character limit
+/// - Actual text length (excluding ANSI codes)  
+/// - Whether a reset code was found in the segment
+/// - Whether the segment needs a reset code (has unclosed ANSI styling)
 fn parse_segment<'a>(segment: &'a Segment, len: usize) -> AnsiSegment<'a> {
     let mut codes = Vec::new();
     let mut expected = AnsiToken::Escape;
