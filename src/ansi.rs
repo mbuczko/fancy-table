@@ -345,13 +345,83 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_codes_queue() {
+    fn test_codes_queue_clear() {
         let mut queue = CodeQueue::default();
-        queue.collect(vec!["a", "b", "c"]);
+        queue.collect(vec!["\x1b[31m", "\x1b[1m"]);
 
+        // First call moves collected to continue
+        assert_eq!(queue.codes_to_continue(), None);
+        assert!(queue.has_codes_to_continue());
+
+        // Clear should mark for reset
+        queue.clear();
+
+        // Next call should clear and return existing codes
+        assert_eq!(
+            queue.codes_to_continue(),
+            Some(String::from("\x1b[31m\x1b[1m"))
+        );
+        assert!(!queue.has_codes_to_continue());
+    }
+
+    #[test]
+    fn test_codes_queue_multiple_codes_collected() {
+        let mut queue = CodeQueue::default();
+
+        // First collected code.
+        // Nothing to be applied at the beginning of current line.
+        queue.collect(vec!["\x1b[31m"]);
+        assert_eq!(queue.codes_to_continue(), None);
+
+        // Second collected code should append to queue of codes to continue
+        // but current line should be prepended with previously collected code.
+        queue.collect(vec!["\x1b[1m"]);
+        assert_eq!(queue.codes_to_continue(), Some(String::from("\x1b[31m")));
+
+        // Finally, next call of `codes_to_continue` should generate a sequence
+        // of all codes collected so far.
+        assert_eq!(
+            queue.codes_to_continue(),
+            Some(String::from("\x1b[31m\x1b[1m"))
+        );
+    }
+
+    #[test]
+    fn test_codes_queue_clear_with_new_codes() {
+        let mut queue = CodeQueue::default();
+
+        // Set up some continuing codes
+        queue.collect(vec!["\x1b[31m", "\x1b[1m"]);
+        queue.codes_to_continue();
+
+        // Collect new codes then clear
+        queue.collect(vec!["\x1b[32m"]);
+        queue.clear();
+
+        // Should get the old continuing codes (before clear) and new codes should be cleared
+        assert_eq!(
+            queue.codes_to_continue(),
+            Some(String::from("\x1b[31m\x1b[1m"))
+        );
+        assert!(!queue.has_codes_to_continue());
+    }
+
+    #[test]
+    fn test_codes_queue_empty_states() {
+        let mut queue = CodeQueue::default();
+
+        // Empty queue
         assert!(!queue.has_codes_to_continue());
         assert_eq!(queue.codes_to_continue(), None);
-        assert_eq!(queue.codes_to_continue(), Some(String::from("abc")));
-        assert!(queue.has_codes_to_continue());
+
+        // Empty collection
+        queue.collect(vec![]);
+        assert_eq!(queue.codes_to_continue(), None);
+        assert!(!queue.has_codes_to_continue());
+
+        // Clear empty queue
+        queue.clear();
+        assert_eq!(queue.codes_to_continue(), None);
+        assert!(!queue.has_codes_to_continue());
     }
 }
