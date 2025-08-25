@@ -128,7 +128,7 @@ pub fn build_string<'a>(
     let mut end_pos = 0;
     let mut txt_len = 0;
 
-    // should line be terminated with reset code?
+    // Tracks whether the current line needs a reset code to properly close ANSI formatting
     let mut line_reset = false;
 
     let segments = build_segments(input, overflow);
