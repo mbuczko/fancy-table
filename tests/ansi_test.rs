@@ -1,349 +1,380 @@
 #[allow(unused)]
-mod ansi_string {
-    use fancy_table::AnsiString;
-    use fancy_table::assert_segments;
-
-    use crate::ansi_string;
+mod ansi_string_truncated {
+    use fancy_table::ansi::{AnsiString, Overflow, build_string};
+    use fancy_table::assert_ansi_string;
 
     const BLUE: &str = "\x1b[34m";
     const RED: &str = "\x1b[31m";
     const RST: &str = "\x1b[0m";
 
-    #[test]
-    fn ansi_string_no_text() {
-        let input = RED.to_string();
-        let ansi_string = AnsiString::new(&input);
-
-        assert!(ansi_string.is_empty());
-    }
+    const OVERFLOW: Overflow = Overflow::Truncate;
 
     #[test]
-    fn malformed_codes() {
-        assert_segments!("\x1b31mHello", [
+    fn test_edge_bounds() {
+        assert_ansi_string!("Hello World", 0, 1, OVERFLOW, []);
+        assert_ansi_string!("Hello World", 1, 1, OVERFLOW, [
             {
-                len => 9,
-                txt => "\x1b31mHello",
-                sgr => None,
-                rst => None
+                txt => "H",
+                len => 1,
+                rst => false
             }
         ]);
-        assert_segments!("\x1b[31Hello", [
+        assert_ansi_string!("Hello World", 30, 1, OVERFLOW, [
             {
-                len => 9,
-                txt => "\x1b[31Hello",
-                sgr => None,
-                rst => None
-            }
-        ]);
-        assert_segments!("{RED}Hello\x1b[0", [
-            {
-                len => 8,
-                txt => "Hello\x1b[0",
-                sgr => "{RED}",
-                rst => None
-            }
-        ]);
-        assert_segments!("{RED}Hello[0m", [
-            {
-                len => 8,
-                txt => "Hello[0m",
-                sgr => "{RED}",
-                rst => None
-            }
-        ])
-    }
-
-    #[test]
-    fn ansi_strings_single_segment() {
-        assert_segments!("Hello", [
-            {
-                len => 5,
-                txt => "Hello",
-                sgr => None,
-                rst => None
-            }
-        ]);
-        assert_segments!("{RED}Hello", [
-            {
-                len => 5,
-                txt => "Hello",
-                sgr => "{RED}",
-                rst => None
-            }
-        ]);
-        assert_segments!("Hello{RED}", [
-            {
-                len => 5,
-                txt => "Hello",
-                sgr => None,
-                rst => None
-            }
-        ]);
-        assert_segments!("{RED}Hello{RST}", [
-            {
-                len => 5,
-                txt => "Hello",
-                sgr => "{RED}",
-                rst => "{RST}"
-            }
-        ]);
-        assert_segments!("{RED}{RST}Hello", [
-            {
-                len => 5,
-                txt => "Hello",
-                sgr => None,
-                rst => None
-            }
-        ]);
-        assert_segments!("Hello{RED}{RST}", [
-            {
-                len => 5,
-                txt => "Hello",
-                sgr => None,
-                rst => None
-            }
-        ]);
-        assert_segments!("Hello{RST}", [
-            {
-                len => 5,
-                txt => "Hello",
-                sgr => None,
-                rst => "{RST}"
-            }
-        ]);
-        assert_segments!("{RED}{BLUE}Hello", [
-            {
-                len => 5,
-                txt => "Hello",
-                sgr => "{RED}{BLUE}",
-                rst => None
-            }
-        ]);
-        assert_segments!("{RST}{RED}{BLUE}{RST}{RED}{BLUE}Hello", [
-            {
-                len => 5,
-                txt => "Hello",
-                sgr => "{RED}{BLUE}",
-                rst => None
+                txt => "Hello World",
+                len => 11,
+                rst => false
             }
         ]);
     }
 
     #[test]
-    fn ansi_strings_single_segment_with_unicode() {
-        assert_segments!("🦀Hello🦀", [
-            {
-                len => 7,
-                txt => "🦀Hello🦀",
-                sgr => None,
-                rst => None
-            }
-        ]);
-        assert_segments!("{RED}🦀Hello🦀", [
-            {
-                len => 7,
-                txt => "🦀Hello🦀",
-                sgr => "{RED}",
-                rst => None
-            }
-        ]);
-        assert_segments!("🦀Hello🦀{RED}", [
-            {
-                len => 7,
-                txt => "🦀Hello🦀",
-                sgr => None,
-                rst => None
-            }
-        ]);
-        assert_segments!("{RED}🦀Hello🦀{RST}", [
-            {
-                len => 7,
-                txt => "🦀Hello🦀",
-                sgr => "{RED}",
-                rst => "{RST}"
-            }
-        ]);
-        assert_segments!("{RED}{RST}🦀Hello🦀", [
-            {
-                len => 7,
-                txt => "🦀Hello🦀",
-                sgr => None,
-                rst => None
-            }
-        ]);
-        assert_segments!("🦀Hello🦀{RED}{RST}", [
-            {
-                len => 7,
-                txt => "🦀Hello🦀",
-                sgr => None,
-                rst => None
-            }
-        ]);
-    }
+    fn test_basic_substrings() {
+        let input = "Hello World";
 
-    #[test]
-    fn ansi_strings_multi_segment() {
-        assert_segments!("{RED}Hello{BLUE}World!", [
+        assert_ansi_string!("Hello World", 5, 1, OVERFLOW, [
             {
-                len => 5,
                 txt => "Hello",
-                sgr => "{RED}",
-                rst => None
-            },
+                len => 5,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("Hello World", 6, 1, OVERFLOW, [
             {
+                txt => "Hello ",
                 len => 6,
-                txt => "World!",
-                sgr => "{BLUE}",
-                rst => None
+                rst => false
             }
         ]);
-        assert_segments!("{RED}Hello{RST}🦀World🦀", [
+        assert_ansi_string!("Hello World", 11, 1, OVERFLOW, [
             {
-                len => 5,
-                txt => "Hello",
-                sgr => "{RED}",
-                rst => "{RST}"
-            },
-            {
-                len => 7,
-                txt => "🦀World🦀",
-                sgr => None,
-                rst => None
+                txt => "Hello World",
+                len => 11,
+                rst => false
             }
         ]);
-        assert_segments!("{RED}Hello{RST}{BLUE}🦀World🦀", [
+        assert_ansi_string!("🦀Hello🦀World", 3, 1, OVERFLOW, [
             {
-                len => 5,
-                txt => "Hello",
-                sgr => "{RED}",
-                rst => "{RST}"
-            },
+                txt => "🦀He",
+                len => 3,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("🦀Hello🦀World", 7, 1, OVERFLOW, [
             {
+                txt => "🦀Hello🦀",
                 len => 7,
-                txt => "🦀World🦀",
-                sgr => "{BLUE}",
-                rst => None
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("🦀Hello🦀World", 8, 1, OVERFLOW, [
+            {
+                txt => "🦀Hello🦀W",
+                len => 8,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("🦀Hello🦀World", 12, 1, OVERFLOW, [
+            {
+                txt => "🦀Hello🦀World",
+                len => 12,
+                rst => false
+            }
+        ]);
+    }
+
+    #[test]
+    fn test_balanced_ansi_codes() {
+        assert_ansi_string!("{RED}Hello{RST} World'", 3, 1, OVERFLOW, [
+            {
+                txt => "{RED}Hel",
+                len => 3,
+                rst => true
+            }
+        ]);
+        assert_ansi_string!("{RED}Hello{RST}", 5, 1, OVERFLOW, [
+            {
+                txt => "{RED}Hello{RST}",
+                len => 5,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("{RED}Hello{RST} World", 6, 1, OVERFLOW, [
+            {
+                txt => "{RED}Hello{RST} ",
+                len => 6,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("{RED}Hello{RST} World", 11, 1, OVERFLOW, [
+            {
+                txt => "{RED}Hello{RST} World",
+                len => 11,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("{RED}🦀Hello🦀{RST}World", 3, 1, OVERFLOW, [
+            {
+                txt => "{RED}🦀He",
+                len => 3,
+                rst => true
+            }
+        ]);
+        assert_ansi_string!("{RED}🦀Hello🦀{RST}World", 7, 1, OVERFLOW, [
+            {
+                txt => "{RED}🦀Hello🦀{RST}",
+                len => 7,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("{RED}🦀Hello🦀{RST}World", 8, 1, OVERFLOW, [
+            {
+                txt => "{RED}🦀Hello🦀{RST}W",
+                len => 8,
+                rst => false
+            }
+        ]);
+    }
+
+    #[test]
+    fn test_unbalanced_codes() {
+        assert_ansi_string!("{RED}🦀Hello🦀{BLUE} World", 3, 1, OVERFLOW, [
+            {
+                txt => "{RED}🦀He",
+                len => 3,
+                rst => true
+            }
+        ]);
+        assert_ansi_string!("{RED}🦀Hello🦀{BLUE} World", 7, 1, OVERFLOW, [
+            {
+                txt => "{RED}🦀Hello🦀{BLUE}",
+                len => 7,
+                rst => true
+            }
+        ]);
+        assert_ansi_string!("{RED}🦀Hello🦀{BLUE} World", 9, 1, OVERFLOW, [
+            {
+                txt => "{RED}🦀Hello🦀{BLUE} W",
+                len => 9,
+                rst => true
+            }
+        ]);
+        assert_ansi_string!("{RED}🦀Hello🦀{BLUE} World", 20, 1, OVERFLOW, [
+            {
+                txt => "{RED}🦀Hello🦀{BLUE} World",
+                len => 13,
+                rst => true
+            }
+        ]);
+        assert_ansi_string!("{RED}🦀Hello🦀{RST}{BLUE} World", 20, 1, OVERFLOW, [
+            {
+                txt => "{RED}🦀Hello🦀{RST}{BLUE} World",
+                len => 13,
+                rst => true
+            }
+        ]);
+    }
+
+    #[test]
+    fn test_unbalanced_codes_with_reset() {
+        assert_ansi_string!("{RED}🦀Hello🦀{BLUE}{RST} World", 20, 1, OVERFLOW, [
+            {
+                txt => "{RED}🦀Hello🦀{BLUE}{RST} World",
+                len => 13,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("{RED}🦀Hello🦀{BLUE}{RED} World{RST}", 20, 1, OVERFLOW, [
+            {
+                txt => "{RED}🦀Hello🦀{BLUE}{RED} World{RST}",
+                len => 13,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("{RED}🦀Hello🦀{BLUE} World {RED}{RST}", 20, 1, OVERFLOW, [
+            {
+                txt => "{RED}🦀Hello🦀{BLUE} World {RED}{RST}",
+                len => 14,
+                rst => false
             }
         ]);
     }
 }
 
-mod ansi_string_get {
-    use fancy_table::AnsiString;
+#[allow(unused)]
+mod ansi_string_wrapped {
+    use fancy_table::ansi::{AnsiString, Overflow, build_string};
+    use fancy_table::assert_ansi_string;
 
     const BLUE: &str = "\x1b[34m";
     const RED: &str = "\x1b[31m";
     const RST: &str = "\x1b[0m";
 
-    #[test]
-    fn get_edge_bounds() {
-        let input = "Hello World";
-        let ansi_str = AnsiString::new(input);
+    const OVERFLOW: Overflow = Overflow::WordWrap;
 
-        assert_eq!(ansi_str.get(0).tupled(), ("", 0));
-        assert_eq!(ansi_str.get(30).tupled(), (input, 11));
+    #[test]
+    fn test_edge_bounds() {
+        assert_ansi_string!("Hello World", 0, 1, OVERFLOW, []);
+        assert_ansi_string!("Hello World", 1, 1, OVERFLOW, [
+            {
+                txt => "H",
+                len => 1,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("Hello World{BLUE}", 1, 2, OVERFLOW, [
+            {
+                txt => "H",
+                len => 1,
+                rst => false
+            },
+            {
+                txt => "W",
+                len => 1,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("Hello wo{BLUE}", 1, 2, OVERFLOW, [
+            {
+                txt => "H",
+                len => 1,
+                rst => false
+            },
+            {
+                txt => "w",
+                len => 1,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("Hello{RED} World{BLUE}", 1, 2, OVERFLOW, [
+            {
+                txt => "H",
+                len => 1,
+                rst => false
+            },
+            {
+                txt => "W",
+                len => 1,
+                rst => true
+            }
+        ]);
+        assert_ansi_string!("Hello World", 30, 1, OVERFLOW, [
+            {
+                txt => "Hello World",
+                len => 11,
+                rst => false
+            }
+        ]);
     }
 
     #[test]
-    fn get_basic_substring() {
-        let input = "Hello World";
-        let ansi_str = AnsiString::new(input);
+    fn test_basic_substrings() {
+        assert_ansi_string!("Hello World", 3, 2, OVERFLOW, [
+            {
+                txt => "Hel",
+                len => 3,
+                rst => false
+            },
+            {
+                txt => "Wor",
+                len => 3,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("Hello World", 5, 2, OVERFLOW, [
+            {
+                txt => "Hello",
+                len => 5,
+                rst => false
+            },
+            {
+                txt => "World",
+                len => 5,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("Hello World", 6, 2, OVERFLOW, [
+            {
+                txt => "Hello",
+                len => 5,
+                rst => false
+            },
+            {
+                txt => "World",
+                len => 5,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("Hello World", 11, 2, OVERFLOW, [
+            {
+                txt => "Hello World",
+                len => 11,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("Hello Beautiful World", 6, 2, OVERFLOW, [
+            {
+                txt => "Hello",
+                len => 5,
+                rst => false
+            },
+            {
+                txt => "Beauti",
+                len => 6,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("🦀Hello🦀World", 7, 2, OVERFLOW, [
+            {
+                txt => "🦀Hello🦀",
+                len => 7,
+                rst => false
+            }
+        ]);
 
-        assert_eq!(ansi_str.get(0).tupled(), ("", 0));
-        assert_eq!(ansi_str.get(5).tupled(), ("Hello", 5));
-        assert_eq!(ansi_str.get(11).tupled(), ("Hello World", 11));
-        assert_eq!(ansi_str.get(20).tupled(), ("Hello World", 11));
-    }
+        assert_ansi_string!("🦀Hello  🦀World", 3, 2, OVERFLOW, [
+            {
+                txt => "🦀He",
+                len => 3,
+                rst => false
+            },
+            {
+                txt => "🦀Wo",
+                len => 3,
+                rst => false
+            }
+        ]);
+        assert_ansi_string!("🦀Hello 🦀Beautiful 🦀World", 1, 3, OVERFLOW, [
+            {
+                txt => "🦀",
+                len => 1,
+                rst => false
+            },
+            {
+                txt => "🦀",
+                len => 1,
+                rst => false
+            },
+            {
+                txt => "🦀",
+                len => 1,
+                rst => false
+            }
+        ]);
+        // TODO: for now, let's assume we don't really want leading spaces.
+        // They will look weird having justification applied.
+        assert_ansi_string!("  🦀H e l l o  🦀World", 8, 2, OVERFLOW, [
+            {
+                txt => "🦀H e l l",
+                len => 8,
+                rst => false
+            },
+            {
+                txt => "o ",
+                len => 2,
+                rst => false
+            }
 
-    #[test]
-    fn get_with_ansi_codes() {
-        let input = format!("{RED}Hello{RST} World");
-        let ansi_str = AnsiString::new(&input);
-
-        assert_eq!(ansi_str.get(3).tupled(), (format!("{RED}Hel").as_str(), 3));
-        assert_eq!(
-            ansi_str.get(5).tupled(),
-            (format!("{RED}Hello{RST}").as_str(), 5)
-        );
-        assert_eq!(
-            ansi_str.get(11).tupled(),
-            (format!("{RED}Hello{RST} World").as_str(), 11)
-        );
-    }
-
-    #[test]
-    fn get_with_unicode() {
-        let input = "🦀foo🦀bar";
-        let ansi_str = AnsiString::new(input);
-
-        assert_eq!(ansi_str.get(3).tupled(), ("🦀fo", 3));
-        assert_eq!(ansi_str.get(5).tupled(), ("🦀foo🦀", 5));
-        assert_eq!(ansi_str.get(8).tupled(), ("🦀foo🦀bar", 8));
-    }
-
-    #[test]
-    fn get_with_unicode_and_ansi() {
-        let input = format!("{RED}🦀foo🦀{RST}bar");
-        let ansi_str = AnsiString::new(&input);
-
-        assert_eq!(ansi_str.get(3), format!("{RED}🦀fo"));
-        assert_eq!(ansi_str.get(5), format!("{RED}🦀foo🦀{RST}"));
-        assert_eq!(ansi_str.get(8), format!("{RED}🦀foo🦀{RST}bar"));
-    }
-
-    #[test]
-    fn get_multiple_codes() {
-        let input = format!("{RED}Hello{BLUE} World");
-        let ansi_str = AnsiString::new(&input);
-
-        assert_eq!(ansi_str.get(3), format!("{RED}Hel"));
-        assert_eq!(ansi_str.get(5), format!("{RED}Hello"));
-        assert_eq!(ansi_str.get(8), format!("{RED}Hello{BLUE} Wo"));
-        assert_eq!(ansi_str.get(11), format!("{RED}Hello{BLUE} World"));
-    }
-
-    #[test]
-    fn get_with_owned_sgr() {
-        let input = "Hello World";
-        let ansi_str = AnsiString::new(input).with_sgr(Some(RED.to_string()));
-
-        assert_eq!(ansi_str.get(5), format!("{RED}Hello"));
-        assert_eq!(ansi_str.get(11), format!("{RED}Hello World"));
-    }
-
-    #[test]
-    fn get_with_appended_strings() {
-        let str = "Hello  World";
-        let splits = str.split(' ').collect::<Vec<_>>();
-        let mut input_1 = AnsiString::new(splits[0]);
-        let input_2 = AnsiString::new(splits[1]);
-        let input_3 = AnsiString::new(splits[2]);
-
-        input_1.append(input_2);
-        input_1.append(input_3);
-        assert_eq!(input_1.get(12).tupled(), (str, 12));
-    }
-
-    #[test]
-    fn get_terminated_reset_with_no_ansi() {
-        let ansi_str = AnsiString::new("Hello World");
-
-        let slice = ansi_str.get(5);
-        assert!(!slice.needs_rst);
-
-        let slice = ansi_str.get(4);
-        assert!(!slice.needs_rst);
-    }
-
-    #[test]
-    fn get_terminated_reset_with_ansi() {
-        let input = format!("{RED}Hello{RST} World");
-        let ansi_str = AnsiString::new(&input);
-
-        let slice = ansi_str.get(5);
-        assert!(!slice.needs_rst);
-
-        let slice = ansi_str.get(4);
-        assert!(slice.needs_rst);
+        ]);
     }
 }
