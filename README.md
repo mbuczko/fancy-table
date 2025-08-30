@@ -60,7 +60,7 @@ table.render(vec![
 
 results in fancy looking table with title and headers:
 
-![Fancy Table Example](images/screenshot.jpg)
+![Fancy Table Example](images/screenshot.png)
 
 Fanciness disclaimer: depending on your terminal font quality of final result may range from unreadable piece of sh*t to beautiful looking table :)
 
