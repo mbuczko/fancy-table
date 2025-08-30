@@ -38,23 +38,24 @@ let table = FancyTable::create(FancyTableOpts {
 .padding(3)
 .width(102)
 .build();
-    
+
 table.render(vec![
-    [
+   [
         "1",
-        "Maeglin",
+        "\x1b[1mMaeglin\x1b[0m",
         "Elf",
         "Renegade\n10/10",
-        "Maeglin is an elf who betrayed his fellow elves to the evil Morgoth in an age before The Lord of the Rings.",
+        "\x1b[31mMaeglin\x1b[0m is an elf who betrayed his fellow elves to the evil Morgoth in an age before \x1b[34mThe Lord of the Rings\x1b[0m.",
     ],
     [
         "29",
-        "Tauriel",
+        "\x1b[1mTauriel\x1b[0m",
         "Woodland elf",
         "Tearjerker\n1/10",
-        "Tauriel is a woodland elf created for The Hobbit films. Her name means \"daughter of the forest\" in Sindarin.",
-    ]
+        "\x1b[31mTauriel\x1b[0m is a woodland elf created for The Hobbit films. Her name means \x1b[33m\"daughter of the forest\"\x1b[0m in Sindarin.",
+    ],
 ]);
+
 ```
 
 results in fancy looking table with title and headers:
