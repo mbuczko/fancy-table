@@ -15,7 +15,7 @@ fn main() {
     .add_column_named_wrapping_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
     .hseparator(Some(Separator::Single))
     .padding(1)
-    .build(80);
+    .build();
 
     table.render(vec![
         [

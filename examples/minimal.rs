@@ -12,7 +12,7 @@ fn main() {
     .add_column_named_with_align("BADNESS SCALE", Layout::Expandable(15), Align::Center)
     .add_column_named_wrapping_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
     .hseparator(Some(Separator::Single))
-    .build(80);
+    .build();
 
     table.render(vec![
         [

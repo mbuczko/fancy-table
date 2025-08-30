@@ -25,6 +25,7 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
             headers: Vec::new(),
             columns: Vec::new(),
             padding: 1,
+            width: 80,
             charset: opts.charset,
             rows_separator: opts.rows_separator,
             headers_separator: opts.headers_separator,
@@ -116,14 +117,18 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
         self.rows_separator = separator;
         self
     }
+    pub fn width(mut self, width: usize) -> Self {
+        self.width = width;
+        self
+    }
 
-    pub fn build(self, table_width: usize) -> FancyTable<'a, T> {
+    pub fn build(self) -> FancyTable<'a, T> {
         let title = self.title.map(|t| TitleSpec {
             title: t,
             align: self.title_align,
         });
         let mut table = FancyTable {
-            width: table_width,
+            width: self.width,
             chars: self.charset.get_chars(),
             rows_separator: self.rows_separator,
             headers_separator: self.headers_separator,
@@ -132,7 +137,7 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
             columns: self.columns,
             title,
         };
-        table.recalculate(table_width);
+        table.recalculate(self.width);
         table
     }
 }
@@ -351,7 +356,7 @@ mod test {
             .add_column_named("DESCRIPTION", Layout::Expandable(150))
             .add_title("props")
             .padding(0)
-            .build(80);
+            .build();
 
         assert_eq!(table.columns.first().unwrap().width, 8);
         assert_eq!(table.columns.get(1).unwrap().width, 4);
@@ -372,7 +377,8 @@ mod test {
             .add_column_named("PERMISSION", Layout::Expandable(30))
             .add_column_named("DESCRIPTION", Layout::Expandable(50))
             .padding(0)
-            .build(0);
+            .width(0)
+            .build();
 
         assert_eq!(table.columns.first().unwrap().width, 2);
         assert_eq!(table.columns.get(1).unwrap().width, 4);

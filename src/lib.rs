@@ -53,6 +53,7 @@ pub struct FancyTable<'a, T: AsRef<str>> {
 }
 
 pub struct FancyTableBuilder<'a, T: AsRef<str>> {
+    width: usize,
     padding: usize,
     max_lines: usize,
     rows_separator: Option<Separator>,
