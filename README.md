@@ -60,19 +60,7 @@ table.render(vec![
 
 results in fancy looking table with title and headers:
 
-```
-╭────┬────────────────┬───────────┬───────────────┬──────────────────▪ props ▪─╮
-│ ID │ NAME           │ CHARACTER │ BADNESS SCALE │                DESCRIPTION │
-╞════╪════════════════╪═══════════╪═══════════════╪════════════════════════════╡
-│ 1  │ Maeglin        │    Elf    │   Renegade    │      Maeglin is an elf who │
-│    │                │           │     10/10     │  betrayed his fellow elves │
-│    │                │           │               │  to the evil Morgoth in an │
-├┄┄┄┄┼┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┼┄┄┄┄┄┄┄┄┄┄┄┼┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┼┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┤
-│ 29 │ Tauriel        │ Woodland  │  Tearjerker   │  Tauriel is a woodland elf │
-│    │                │    elf    │     1/10      │     created for The Hobbit │
-│    │                │           │               │      films. Her name means │
-╰────┴────────────────┴───────────┴───────────────┴────────────────────────────╯
-```
+![Fancy Table Example](images/screenshot.jpg)
 
 Fanciness disclaimer: depending on your terminal font quality of final result may range from unreadable piece of sh*t to beautiful looking table :)
 
