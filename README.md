@@ -36,7 +36,6 @@ let mut table = FancyTable::create(FancyTableOpts {
    .add_column_named_wrapping_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
    .padding(1)
    .hseparator(Some(Separator::Double))
-   .rseparator(Some(Separator::Custom('┄')))
    .width(120)
    .build();
     
