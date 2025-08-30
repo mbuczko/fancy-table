@@ -24,20 +24,20 @@ fancy-table = "0.4.1"
 All crucial functionality exposed via simple, yet quite powerful API:
 
 ```rust
-let mut table = FancyTable::create(FancyTableOpts {
-       charset: Charset::Modern,
-       ..Default::default()
-   })
-   .add_title_with_align("props", TitleAlign::RightOffset(1))
-   .add_column_named("ID", Layout::Slim)
-   .add_column_named("NAME", Layout::Fixed(16))
-   .add_column_named_wrapping_with_align("CHARACTER", Layout::Fixed(11), Align::Center)
-   .add_column_named_with_align("BADNESS SCALE", Layout::Expandable(15), Align::Center)
-   .add_column_named_wrapping_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
-   .padding(1)
-   .hseparator(Some(Separator::Double))
-   .width(120)
-   .build();
+let table = FancyTable::create(FancyTableOpts {
+        charset: Charset::Modern,
+        ..Default::default()
+})
+.add_title_with_align("props", TitleAlign::RightOffset(1))
+.add_column_named("ID", Layout::Slim)
+.add_column_named("NAME", Layout::Fixed(16))
+.add_column_named_wrapping_with_align("CHARACTER", Layout::Fixed(15), Align::Center)
+.add_column_named_with_align("BADNESS SCALE", Layout::Expandable(15), Align::Center)
+.add_column_named_wrapping_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
+.hseparator(Some(Separator::Double))
+.padding(3)
+.width(102)
+.build();
     
 table.render(vec![
     [
