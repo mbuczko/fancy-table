@@ -1,9 +1,13 @@
 use std::cmp::min;
 
+// SmallVec for more efficient ANSI code collection (for common cases)
+use smallvec::SmallVec;
+
 pub const RST_CODE: &str = "\x1b[0m";
 
 // open SGRs, text slice, total length (excluding ANSI codes), has reset code?, needs reset?
-type AnsiSegment<'a> = (Vec<&'a str>, &'a str, usize, bool, bool);
+// Using SmallVec for better performance in the common case of few ANSI codes
+type AnsiSegment<'a> = (SmallVec<[&'a str; 4]>, &'a str, usize, bool, bool);
 
 #[derive(Default)]
 pub struct AnsiString<'a> {
@@ -31,41 +35,48 @@ enum Segment<'a> {
     Word(&'a str, usize),
     Term(&'a str, usize),
 }
-
 #[derive(Debug, Default)]
 struct CodeQueue<'a> {
-    codes_to_continue: Vec<&'a str>,
-    codes_to_collect: Vec<&'a str>,
+    codes_to_continue: SmallVec<[&'a str; 4]>, // Most common case: few ANSI codes
+    codes_to_collect: SmallVec<[&'a str; 4]>,
     reset_after_get: bool,
 }
 
 impl<'a> CodeQueue<'a> {
     pub fn codes_to_continue(&mut self) -> Option<String> {
-        let mut seq = None;
-        let count = self.codes_to_continue.len();
+        let code_seq = if self.codes_to_continue.is_empty() {
+            None
+        } else {
+            let capacity = self.codes_to_continue.iter().map(|s| s.len()).sum();
+            let mut codes = String::with_capacity(capacity);
 
-        if count > 0 {
-            let mut codes = String::with_capacity(count);
-            for s in self.codes_to_continue.iter() {
+            for s in &self.codes_to_continue {
                 codes.push_str(s);
             }
-            seq = Some(codes)
-        }
+            Some(codes)
+        };
         if self.reset_after_get {
             self.codes_to_continue.clear();
             self.reset_after_get = false;
         }
-        // codes collected become codes to continue in case of line breaks
-        self.codes_to_continue.append(&mut self.codes_to_collect);
-        seq
+
+        // Codes collected become codes to continue in case of line breaks
+        self.codes_to_continue
+            .extend_from_slice(&self.codes_to_collect);
+        self.codes_to_collect.clear();
+
+        code_seq
     }
-    pub fn collect(&mut self, codes: Vec<&'a str>) {
+
+    pub fn collect(&mut self, codes: SmallVec<[&'a str; 4]>) {
         self.codes_to_collect.extend(codes);
     }
+
     pub fn clear(&mut self) {
         self.reset_after_get = true;
         self.codes_to_collect.clear();
     }
+
     pub fn has_codes_to_continue(&self) -> bool {
         !self.codes_to_continue.is_empty()
     }
@@ -121,34 +132,34 @@ pub fn build_string<'a>(
     if hspace == 0 {
         return vec![];
     }
-    // stack of collected ANSI codes
+
+    // Tracks whether the current line needs a reset code to properly close ANSI formatting
+    let mut line_reset = false;
+
+    // A queue keeping ANSI codes to be carried over to the next line
     let mut queue = CodeQueue::default();
     let mut result = Vec::with_capacity(vspace);
     let mut str_pos = 0;
     let mut end_pos = 0;
     let mut txt_len = 0;
 
-    // Tracks whether the current line needs a reset code to properly close ANSI formatting
-    let mut line_reset = false;
-
-    let segments = build_segments(input, overflow);
-    let count = segments.len();
-
-    for (i, seg) in segments.iter().enumerate() {
-        let is_last_str = i == count - 1;
+    let mut segments = build_segments_iter(input, overflow).peekable();
+    while let Some(seg) = segments.next() {
+        let is_last_str = segments.peek().is_none();
         let is_init_str = txt_len == 0;
         let is_term_str = matches!(seg, Segment::Term(_, _));
+        let eol = is_last_str || is_term_str;
+        let pos = seg.pos();
 
         let (new_codes, txt, total_len, has_rst, needs_rst) = parse_segment(seg, hspace);
         let len = min(total_len, hspace);
-        let eol = is_last_str || is_term_str;
 
         // Separator length: 0 for first segment in line, 1 otherwise.
         let sep_len = (txt_len > 0) as usize;
 
         if txt_len == 0 {
-            str_pos = seg.pos();
-            end_pos = str_pos;
+            str_pos = pos;
+            end_pos = pos;
             line_reset = queue.has_codes_to_continue();
         }
 
@@ -160,9 +171,9 @@ pub fn build_string<'a>(
                 txt_len,
                 line_reset,
             ));
-            // Constituate current segment as initial in the new line
-            str_pos = seg.pos();
-            end_pos = str_pos + txt.len();
+            // Constitute current segment as initial in the new line
+            str_pos = pos;
+            end_pos = pos + txt.len();
             txt_len = len;
         } else {
             end_pos += txt.len() + sep_len;
@@ -199,48 +210,46 @@ pub fn build_string<'a>(
     result
 }
 
-/// Splits input string into segments for parsing based on overflow strategy.
-///
+/// Splits input string into segments for parsing based on overflow strategy:
 /// - `Overflow::Truncate`: Splits only on newlines, creating one segment per line
 /// - `Overflow::WordWrap`: Splits on both newlines and spaces for word-based wrapping
-fn build_segments<'a>(input: &'a str, overflow: &Overflow) -> Vec<Segment<'a>> {
+fn build_segments_iter<'a>(
+    input: &'a str,
+    overflow: &Overflow,
+) -> Box<dyn Iterator<Item = Segment<'a>> + 'a> {
     let input_ptr = input.as_ptr();
     match overflow {
-        Overflow::Truncate => input
-            .lines()
-            .map(|s| Segment::Term(s, s.as_ptr() as usize - input_ptr as usize))
-            .collect::<Vec<_>>(),
-        Overflow::WordWrap => input
-            .lines()
-            .flat_map(|s| {
-                let mut iter = s.split(' ').peekable();
-
-                std::iter::from_fn(move || {
-                    iter.next().map(|slice| {
-                        let pos = slice.as_ptr() as usize - input_ptr as usize;
-
-                        if iter.peek().is_none() {
-                            Segment::Term(slice, pos)
-                        } else {
-                            Segment::Word(slice, pos)
-                        }
-                    })
+        Overflow::Truncate => Box::new(
+            input
+                .lines()
+                .map(move |s| Segment::Term(s, s.as_ptr() as usize - input_ptr as usize)),
+        ),
+        Overflow::WordWrap => Box::new(input.lines().flat_map(move |s| {
+            let mut iter = s.split(' ').peekable();
+            std::iter::from_fn(move || {
+                iter.next().map(|slice| {
+                    let pos = slice.as_ptr() as usize - input_ptr as usize;
+                    if iter.peek().is_none() {
+                        Segment::Term(slice, pos)
+                    } else {
+                        Segment::Word(slice, pos)
+                    }
                 })
             })
-            .collect::<Vec<_>>(),
+        })),
     }
 }
 
 /// Parses a single text segment, extracting ANSI codes and enforcing character limits.
 ///
 /// Returns a tuple containing:
-/// - Vector of ANSI escape sequences found in the segment
+/// - SmallVec of ANSI escape sequences found in the segment (optimized for common case of few codes)
 /// - Text slice (including ANSI codes) truncated to fit the character limit
 /// - Actual text length (excluding ANSI codes)  
 /// - Whether a reset code was found in the segment
 /// - Whether the segment needs a reset code (has unclosed ANSI styling)
-fn parse_segment<'a>(segment: &'a Segment, len: usize) -> AnsiSegment<'a> {
-    let mut codes = Vec::new();
+fn parse_segment<'a>(segment: Segment<'a>, len: usize) -> AnsiSegment<'a> {
+    let mut codes = SmallVec::new();
     let mut expected = AnsiToken::Escape;
     let mut current_code_start = 0;
 
@@ -251,6 +260,11 @@ fn parse_segment<'a>(segment: &'a Segment, len: usize) -> AnsiSegment<'a> {
     let mut stop_collecting = false;
 
     let input = segment.text();
+
+    // Fast path: if input is empty or very short, avoid expensive processing
+    if input.is_empty() {
+        return (codes, input, 0, false, false);
+    }
 
     for (pos, ch) in input.char_indices() {
         match ch {
@@ -343,11 +357,12 @@ macro_rules! assert_ansi_string {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use smallvec::smallvec;
 
     #[test]
     fn test_codes_queue_clear() {
         let mut queue = CodeQueue::default();
-        queue.collect(vec!["\x1b[31m", "\x1b[1m"]);
+        queue.collect(smallvec!["\x1b[31m", "\x1b[1m"]);
 
         // First call moves collected to continue
         assert_eq!(queue.codes_to_continue(), None);
@@ -370,12 +385,12 @@ mod tests {
 
         // First collected code.
         // Nothing to be applied at the beginning of current line.
-        queue.collect(vec!["\x1b[31m"]);
+        queue.collect(smallvec!["\x1b[31m"]);
         assert_eq!(queue.codes_to_continue(), None);
 
         // Second collected code should append to queue of codes to continue
         // but current line should be prepended with previously collected code.
-        queue.collect(vec!["\x1b[1m"]);
+        queue.collect(smallvec!["\x1b[1m"]);
         assert_eq!(queue.codes_to_continue(), Some(String::from("\x1b[31m")));
 
         // Finally, next call of `codes_to_continue` should generate a sequence
@@ -391,11 +406,11 @@ mod tests {
         let mut queue = CodeQueue::default();
 
         // Set up some continuing codes
-        queue.collect(vec!["\x1b[31m", "\x1b[1m"]);
+        queue.collect(smallvec!["\x1b[31m", "\x1b[1m"]);
         queue.codes_to_continue();
 
         // Collect new codes then clear
-        queue.collect(vec!["\x1b[32m"]);
+        queue.collect(smallvec!["\x1b[32m"]);
         queue.clear();
 
         // Should get the old continuing codes (before clear) and new codes should be cleared
@@ -415,7 +430,7 @@ mod tests {
         assert_eq!(queue.codes_to_continue(), None);
 
         // Empty collection
-        queue.collect(vec![]);
+        queue.collect(smallvec![]);
         assert_eq!(queue.codes_to_continue(), None);
         assert!(!queue.has_codes_to_continue());
 

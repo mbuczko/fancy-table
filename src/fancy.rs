@@ -168,25 +168,25 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
         let mut remaining_width = table_width.saturating_sub(min_table_width);
 
         if remaining_width > 0 {
-            let expandable_cols = self
+            // Count expandable columns first
+            let mut expandable_count = self
                 .columns
-                .iter_mut()
-                .filter_map(|c| match c.layout {
-                    Layout::Expandable(max_width) => Some((c, max_width)),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
+                .iter()
+                .filter(|c| matches!(c.layout, Layout::Expandable(_)))
+                .count();
 
-            let mut expandable_count = expandable_cols.len();
-            for (ec, max_width) in expandable_cols {
-                let new_width = compensate(ec.width, max_width, remaining_width / expandable_count);
-                let compensation = new_width.saturating_sub(ec.width);
+            // Process expandable columns without collecting to Vec
+            for c in self.columns.iter_mut() {
+                if let Layout::Expandable(max_width) = c.layout {
+                    let new_width = compensate(c.width, max_width, remaining_width / expandable_count);
+                    let compensation = new_width.saturating_sub(c.width);
 
-                if new_width > ec.width {
-                    ec.width = new_width;
+                    if new_width > c.width {
+                        c.width = new_width;
+                    }
+                    remaining_width -= compensation;
+                    expandable_count -= 1;
                 }
-                remaining_width -= compensation;
-                expandable_count -= 1;
             }
         }
     }

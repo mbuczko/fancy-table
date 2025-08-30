@@ -11,3 +11,4 @@ license = "MIT"
 edition = "2024"
 
 [dependencies]
+smallvec = "1.13"
