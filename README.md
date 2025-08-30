@@ -24,55 +24,43 @@ fancy-table = "0.4.1"
 All crucial functionality exposed via simple, yet quite powerful API:
 
 ```rust
-let mut table = FancyTable::create(FancyTableOpts {
-       charset: Charset::Modern,
-       ..Default::default()
-   })
-   .add_title_with_align("props", TitleAlign::RightOffset(1))
-   .add_column_named("ID", Layout::Slim)
-   .add_column_named("NAME", Layout::Fixed(16))
-   .add_column_named_wrapping_with_align("CHARACTER", Layout::Fixed(11), Align::Center)
-   .add_column_named_with_align("BADNESS SCALE", Layout::Expandable(15), Align::Center)
-   .add_column_named_wrapping_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
-   .padding(1)
-   .hseparator(Some(Separator::Double))
-   .rseparator(Some(Separator::Custom('┄')))
-   .width(120)
-   .build();
-    
+let table = FancyTable::create(FancyTableOpts {
+        charset: Charset::Modern,
+        ..Default::default()
+})
+.add_title_with_align("props", TitleAlign::RightOffset(1))
+.add_column_named("ID", Layout::Slim)
+.add_column_named("NAME", Layout::Fixed(16))
+.add_column_named_wrapping_with_align("CHARACTER", Layout::Fixed(15), Align::Center)
+.add_column_named_with_align("BADNESS SCALE", Layout::Expandable(15), Align::Center)
+.add_column_named_wrapping_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
+.hseparator(Some(Separator::Double))
+.padding(3)
+.width(102)
+.build();
+
 table.render(vec![
-    [
+   [
         "1",
-        "Maeglin",
+        "\x1b[1mMaeglin\x1b[0m",
         "Elf",
         "Renegade\n10/10",
-        "Maeglin is an elf who betrayed his fellow elves to the evil Morgoth in an age before The Lord of the Rings.",
+        "\x1b[31mMaeglin\x1b[0m is an elf who betrayed his fellow elves to the evil Morgoth in an age before \x1b[34mThe Lord of the Rings\x1b[0m.",
     ],
     [
         "29",
-        "Tauriel",
+        "\x1b[1mTauriel\x1b[0m",
         "Woodland elf",
         "Tearjerker\n1/10",
-        "Tauriel is a woodland elf created for The Hobbit films. Her name means \"daughter of the forest\" in Sindarin.",
-    ]
+        "\x1b[31mTauriel\x1b[0m is a woodland elf created for The Hobbit films. Her name means \x1b[33m\"daughter of the forest\"\x1b[0m in Sindarin.",
+    ],
 ]);
+
 ```
 
 results in fancy looking table with title and headers:
 
-```
-╭────┬────────────────┬───────────┬───────────────┬──────────────────▪ props ▪─╮
-│ ID │ NAME           │ CHARACTER │ BADNESS SCALE │                DESCRIPTION │
-╞════╪════════════════╪═══════════╪═══════════════╪════════════════════════════╡
-│ 1  │ Maeglin        │    Elf    │   Renegade    │      Maeglin is an elf who │
-│    │                │           │     10/10     │  betrayed his fellow elves │
-│    │                │           │               │  to the evil Morgoth in an │
-├┄┄┄┄┼┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┼┄┄┄┄┄┄┄┄┄┄┄┼┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┼┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┤
-│ 29 │ Tauriel        │ Woodland  │  Tearjerker   │  Tauriel is a woodland elf │
-│    │                │    elf    │     1/10      │     created for The Hobbit │
-│    │                │           │               │      films. Her name means │
-╰────┴────────────────┴───────────┴───────────────┴────────────────────────────╯
-```
+![Fancy Table Example](images/screenshot.png)
 
 Fanciness disclaimer: depending on your terminal font quality of final result may range from unreadable piece of sh*t to beautiful looking table :)
 
