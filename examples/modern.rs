@@ -11,7 +11,7 @@ fn main() {
         .padding(1)
         .hseparator(Some(Separator::Double))
         .rseparator(Some(Separator::Custom('┄')))
-        .build(80);
+        .build();
 
     table.render(vec![
         [
