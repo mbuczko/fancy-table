@@ -37,7 +37,8 @@ let mut table = FancyTable::create(FancyTableOpts {
    .padding(1)
    .hseparator(Some(Separator::Double))
    .rseparator(Some(Separator::Custom('┄')))
-   .build(80);
+   .width(120)
+   .build();
     
 table.render(vec![
     [
