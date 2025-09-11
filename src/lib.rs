@@ -5,17 +5,20 @@ pub mod charset;
 mod fancy;
 mod juststr;
 
+#[derive(Debug)]
 pub enum Layout {
     Slim,
     Fixed(usize),
     Expandable(usize),
 }
 
+#[derive(Debug)]
 pub enum Overflow {
     Wrap,
     Truncate,
 }
 
+#[derive(Debug)]
 pub enum Align {
     Center,
     Left,
@@ -65,6 +68,7 @@ pub struct FancyTableBuilder<'a, T: AsRef<str>> {
     title_align: TitleAlign,
 }
 
+#[derive(Debug)]
 struct ColSpec {
     width: usize,
     max_lines: usize,

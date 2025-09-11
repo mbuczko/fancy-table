@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 use crate::{
     Align, ColSpec, FancyTable, FancyTableBuilder, FancyTableOpts, Layout, Overflow, Separator,
     TitleAlign, TitleSpec,
@@ -158,7 +160,7 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
                 Layout::Slim | Layout::Expandable(_) => self
                     .headers
                     .get(i)
-                    .map(|h| h.as_ref().len() + (2 * self.padding))
+                    .map(|h| h.as_ref().chars().count() + (2 * self.padding))
                     .unwrap_or(0),
             };
             spec.width = column_width;
@@ -173,24 +175,39 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
         let mut remaining_width = table_width.saturating_sub(min_table_width);
 
         if remaining_width > 0 {
-            // Count expandable columns first
-            let mut expandable_count = self
+            let expandables = self
                 .columns
-                .iter()
-                .filter(|c| matches!(c.layout, Layout::Expandable(_)))
-                .count();
+                .iter_mut()
+                .filter(|c| matches!(c.layout, Layout::Expandable(_)));
 
-            // Process expandable columns without collecting to Vec
-            for c in self.columns.iter_mut() {
-                if let Layout::Expandable(max_width) = c.layout {
-                    let new_width = compensate(c.width, max_width, remaining_width / expandable_count);
+            let mut spec_refs = expandables.collect::<Vec<_>>();
+            let mut expandables_count = spec_refs.len();
+
+            // To avoid the situation where expandable columns cannot expand enough to fully fit
+            // remaining space the idea is to sort them by max expand widths and oversize only
+            // last (longest) column if needed, ie. when requested table width is still bigger
+            // than a sum of particular column sizes.
+
+            spec_refs.sort_by_key(|c| match c.layout {
+                Layout::Expandable(max) => max,
+                _ => c.width,
+            });
+
+            for c in spec_refs.into_iter() {
+                if let Layout::Expandable(max_expand) = c.layout {
+                    let new_width =
+                        min(c.width + (remaining_width / expandables_count), max_expand);
                     let compensation = new_width.saturating_sub(c.width);
 
-                    if new_width > c.width {
+                    // Oversize biggest expandable column in case when there is still
+                    // some remaining space but no more expandable columns to expand.
+                    if expandables_count == 1 {
+                        c.width += remaining_width;
+                    } else if compensation > 0 {
                         c.width = new_width;
+                        remaining_width -= compensation;
                     }
-                    remaining_width -= compensation;
-                    expandable_count -= 1;
+                    expandables_count -= 1;
                 }
             }
         }
@@ -269,7 +286,7 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
         let title_width = self
             .title
             .as_ref()
-            .map(|ts| ts.title.len() + 4)
+            .map(|ts| ts.title.chars().count() + 4) // decorators on both sides
             .unwrap_or(0);
 
         let mut acc = 1;
@@ -330,15 +347,6 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
             }
         }
         println!("{btm}");
-    }
-}
-
-fn compensate(width: usize, max_width: usize, compensation: usize) -> usize {
-    let compensated = width + compensation;
-    if compensated > max_width {
-        max_width
-    } else {
-        compensated
     }
 }
 
