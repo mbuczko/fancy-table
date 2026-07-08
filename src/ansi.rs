@@ -261,7 +261,7 @@ fn parse_segment<'a>(segment: Segment<'a>, len: usize) -> AnsiSegment<'a> {
 
     let input = segment.text();
 
-    // Fast path: if input is empty or very short, avoid expensive processing
+    // Fast path: if input is empty avoid expensive processing
     if input.is_empty() {
         return (codes, input, 0, false, false);
     }
@@ -311,6 +311,7 @@ fn parse_segment<'a>(segment: Segment<'a>, len: usize) -> AnsiSegment<'a> {
             }
         }
     }
+
     let slice = &input[0..end_pos.unwrap_or(input.len())];
     (codes, slice, txt_len, has_rst, needs_rst)
 }

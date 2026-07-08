@@ -1,6 +1,6 @@
 [package]
 name = "fancy-table"
-version = "0.4.1"
+version = "0.4.2"
 description = "Fancy tables with bells and whistles"
 repository = "https://github.com/mbuczko/fancy-table"
 readme = "README.md"
@@ -12,3 +12,4 @@ edition = "2024"
 
 [dependencies]
 smallvec = "1.13"
+terminal_size = "0.4"

@@ -1,6 +1,8 @@
+use std::cmp::min;
+
 use crate::{
     Align, ColSpec, FancyTable, FancyTableBuilder, FancyTableOpts, Layout, Overflow, Separator,
-    TitleAlign, TitleSpec,
+    TitleAlign, TitleSpec, Width,
     charset::Charset,
     juststr::{JustedString, Justify},
 };
@@ -25,7 +27,7 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
             headers: Vec::new(),
             columns: Vec::new(),
             padding: 1,
-            width: 80,
+            width: Width::Fixed(80),
             charset: opts.charset,
             rows_separator: opts.rows_separator,
             headers_separator: opts.headers_separator,
@@ -43,7 +45,7 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
         overflow: Overflow,
     ) -> Self {
         self.columns.push(ColSpec {
-            width,
+            width: width.max(1),
             layout,
             align,
             overflow,
@@ -117,18 +119,28 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
         self.rows_separator = separator;
         self
     }
-    pub fn width(mut self, width: usize) -> Self {
-        self.width = width;
+    pub fn width(mut self, width: impl Into<Width>) -> Self {
+        self.width = width.into();
         self
     }
 
     pub fn build(self) -> FancyTable<'a, T> {
+        let width = match self.width {
+            Width::Fixed(w) => w,
+            Width::Percentage(pct) => {
+                use terminal_size::{Width as TermWidth, terminal_size};
+                terminal_size()
+                    .map(|(TermWidth(w), _)| w as usize * pct as usize / 100)
+                    .unwrap_or(80)
+            }
+        }
+        .max(3);
         let title = self.title.map(|t| TitleSpec {
             title: t,
             align: self.title_align,
         });
         let mut table = FancyTable {
-            width: self.width,
+            width,
             chars: self.charset.get_chars(),
             rows_separator: self.rows_separator,
             headers_separator: self.headers_separator,
@@ -137,7 +149,7 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
             columns: self.columns,
             title,
         };
-        table.recalculate(self.width);
+        table.recalculate(width);
         table
     }
 }
@@ -158,10 +170,10 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
                 Layout::Slim | Layout::Expandable(_) => self
                     .headers
                     .get(i)
-                    .map(|h| h.as_ref().len() + (2 * self.padding))
+                    .map(|h| h.as_ref().chars().count() + (2 * self.padding))
                     .unwrap_or(0),
             };
-            spec.width = column_width;
+            spec.width = column_width.max(1);
             min_table_width += spec.width;
         }
 
@@ -173,24 +185,39 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
         let mut remaining_width = table_width.saturating_sub(min_table_width);
 
         if remaining_width > 0 {
-            // Count expandable columns first
-            let mut expandable_count = self
+            let expandables = self
                 .columns
-                .iter()
-                .filter(|c| matches!(c.layout, Layout::Expandable(_)))
-                .count();
+                .iter_mut()
+                .filter(|c| matches!(c.layout, Layout::Expandable(_)));
 
-            // Process expandable columns without collecting to Vec
-            for c in self.columns.iter_mut() {
-                if let Layout::Expandable(max_width) = c.layout {
-                    let new_width = compensate(c.width, max_width, remaining_width / expandable_count);
+            let mut spec_refs = expandables.collect::<Vec<_>>();
+            let mut expandables_count = spec_refs.len();
+
+            // To avoid the situation where expandable columns cannot expand enough to fully fit
+            // remaining space the idea is to sort them by max expand widths and oversize only
+            // last (longest) column if needed, ie. when requested table width is still bigger
+            // than a sum of particular column sizes.
+
+            spec_refs.sort_by_key(|c| match c.layout {
+                Layout::Expandable(max) => max,
+                _ => c.width,
+            });
+
+            for c in spec_refs.into_iter() {
+                if let Layout::Expandable(max_expand) = c.layout {
+                    let new_width =
+                        min(c.width + (remaining_width / expandables_count), max_expand);
                     let compensation = new_width.saturating_sub(c.width);
 
-                    if new_width > c.width {
+                    // Oversize biggest expandable column in case when there is still
+                    // some remaining space but no more expandable columns to expand.
+                    if expandables_count == 1 {
+                        c.width += remaining_width;
+                    } else if compensation > 0 {
                         c.width = new_width;
+                        remaining_width -= compensation;
                     }
-                    remaining_width -= compensation;
-                    expandable_count -= 1;
+                    expandables_count -= 1;
                 }
             }
         }
@@ -269,7 +296,7 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
         let title_width = self
             .title
             .as_ref()
-            .map(|ts| ts.title.len() + 4)
+            .map(|ts| ts.title.chars().count() + 4) // decorators on both sides
             .unwrap_or(0);
 
         let mut acc = 1;
@@ -333,15 +360,6 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
     }
 }
 
-fn compensate(width: usize, max_width: usize, compensation: usize) -> usize {
-    let compensated = width + compensation;
-    if compensated > max_width {
-        max_width
-    } else {
-        compensated
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -385,5 +403,18 @@ mod test {
         assert_eq!(table.columns.get(2).unwrap().width, 10);
         assert_eq!(table.columns.get(3).unwrap().width, 10);
         assert_eq!(table.columns.get(4).unwrap().width, 11);
+    }
+
+    #[test]
+    fn minimum_column_width() {
+        // Fixed(0) and an empty header should both floor to 1
+        let table = FancyTable::create(FancyTableOpts::default())
+            .add_column_named("", Layout::Slim)
+            .add_column_named("X", Layout::Fixed(0))
+            .padding(0)
+            .build();
+
+        assert_eq!(table.columns.first().unwrap().width, 1);
+        assert_eq!(table.columns.get(1).unwrap().width, 1);
     }
 }
