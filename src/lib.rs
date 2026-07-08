@@ -36,6 +36,17 @@ pub enum Separator {
     Custom(char),
 }
 
+pub enum Width {
+    Fixed(usize),
+    Percentage(u8),
+}
+
+impl From<usize> for Width {
+    fn from(v: usize) -> Self {
+        Width::Fixed(v)
+    }
+}
+
 pub struct FancyTableOpts {
     pub title_align: TitleAlign,
     pub charset: Charset,
@@ -56,7 +67,7 @@ pub struct FancyTable<'a, T: AsRef<str>> {
 }
 
 pub struct FancyTableBuilder<'a, T: AsRef<str>> {
-    width: usize,
+    width: Width,
     padding: usize,
     max_lines: usize,
     rows_separator: Option<Separator>,

@@ -2,7 +2,7 @@ use std::cmp::min;
 
 use crate::{
     Align, ColSpec, FancyTable, FancyTableBuilder, FancyTableOpts, Layout, Overflow, Separator,
-    TitleAlign, TitleSpec,
+    TitleAlign, TitleSpec, Width,
     charset::Charset,
     juststr::{JustedString, Justify},
 };
@@ -27,7 +27,7 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
             headers: Vec::new(),
             columns: Vec::new(),
             padding: 1,
-            width: 80,
+            width: Width::Fixed(80),
             charset: opts.charset,
             rows_separator: opts.rows_separator,
             headers_separator: opts.headers_separator,
@@ -45,7 +45,7 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
         overflow: Overflow,
     ) -> Self {
         self.columns.push(ColSpec {
-            width,
+            width: width.max(1),
             layout,
             align,
             overflow,
@@ -119,18 +119,28 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
         self.rows_separator = separator;
         self
     }
-    pub fn width(mut self, width: usize) -> Self {
-        self.width = width;
+    pub fn width(mut self, width: impl Into<Width>) -> Self {
+        self.width = width.into();
         self
     }
 
     pub fn build(self) -> FancyTable<'a, T> {
+        let width = match self.width {
+            Width::Fixed(w) => w,
+            Width::Percentage(pct) => {
+                use terminal_size::{Width as TermWidth, terminal_size};
+                terminal_size()
+                    .map(|(TermWidth(w), _)| w as usize * pct as usize / 100)
+                    .unwrap_or(80)
+            }
+        }
+        .max(3);
         let title = self.title.map(|t| TitleSpec {
             title: t,
             align: self.title_align,
         });
         let mut table = FancyTable {
-            width: self.width,
+            width,
             chars: self.charset.get_chars(),
             rows_separator: self.rows_separator,
             headers_separator: self.headers_separator,
@@ -139,7 +149,7 @@ impl<'a, T: AsRef<str>> FancyTableBuilder<'a, T> {
             columns: self.columns,
             title,
         };
-        table.recalculate(self.width);
+        table.recalculate(width);
         table
     }
 }
@@ -163,7 +173,7 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
                     .map(|h| h.as_ref().chars().count() + (2 * self.padding))
                     .unwrap_or(0),
             };
-            spec.width = column_width;
+            spec.width = column_width.max(1);
             min_table_width += spec.width;
         }
 
@@ -393,5 +403,18 @@ mod test {
         assert_eq!(table.columns.get(2).unwrap().width, 10);
         assert_eq!(table.columns.get(3).unwrap().width, 10);
         assert_eq!(table.columns.get(4).unwrap().width, 11);
+    }
+
+    #[test]
+    fn minimum_column_width() {
+        // Fixed(0) and an empty header should both floor to 1
+        let table = FancyTable::create(FancyTableOpts::default())
+            .add_column_named("", Layout::Slim)
+            .add_column_named("X", Layout::Fixed(0))
+            .padding(0)
+            .build();
+
+        assert_eq!(table.columns.first().unwrap().width, 1);
+        assert_eq!(table.columns.get(1).unwrap().width, 1);
     }
 }

@@ -36,7 +36,7 @@ let table = FancyTable::create(FancyTableOpts {
 .add_column_named_wrapping_with_align("DESCRIPTION", Layout::Expandable(150), Align::Right)
 .hseparator(Some(Separator::Double))
 .padding(3)
-.width(102)
+.width(Width::Fixed(102))
 .build();
 
 table.render(vec![
