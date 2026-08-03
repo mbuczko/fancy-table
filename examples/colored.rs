@@ -7,7 +7,7 @@ fn main() {
         charset: Charset::Modern,
         ..Default::default()
     })
-    .add_title_with_align("props", TitleAlign::RightOffset(1))
+    .add_title_with_align("\x1b[1;36mprops\x1b[0m", TitleAlign::RightOffset(1))
     .add_column_named("ID", Layout::Slim)
     .add_column_named("NAME", Layout::Fixed(16))
     .add_column_named_wrapping_with_align("CHARACTER", Layout::Fixed(15), Align::Center)

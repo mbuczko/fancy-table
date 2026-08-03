@@ -3,6 +3,7 @@ use std::cmp::min;
 use crate::{
     Align, ColSpec, FancyTable, FancyTableBuilder, FancyTableOpts, Layout, Overflow, Separator,
     TitleAlign, TitleSpec, Width,
+    ansi::{self, Overflow as AnsiOverflow},
     charset::Charset,
     juststr::{JustedString, Justify},
 };
@@ -293,11 +294,15 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
         let rows_count = rows.len();
         let rsep_chars = self.separator_chars(&self.rows_separator);
         let hsep_chars = self.separator_chars(&self.headers_separator);
-        let title_width = self
-            .title
-            .as_ref()
-            .map(|ts| ts.title.chars().count() + 4) // decorators on both sides
-            .unwrap_or(0);
+        // Parse the title through the same ANSI-aware machinery used for cell
+        // content, so escape codes count as zero-width and don't throw off
+        // the border layout.
+        let title_line = self.title.as_ref().and_then(|ts| {
+            ansi::build_string(ts.title, self.width, 1, &AnsiOverflow::Truncate)
+                .into_iter()
+                .next()
+        });
+        let title_width = title_line.as_ref().map(|tl| tl.len + 4).unwrap_or(0); // decorators on both sides
 
         let mut acc = 1;
         let mut border_top = vec![ch.ew; self.width];
@@ -329,13 +334,28 @@ impl<'a, T: AsRef<str>> FancyTable<'a, T> {
         // draw a title
         if title_width > 0 && title_width < self.width - 4 {
             let spec = self.title.as_ref().unwrap();
+            let tl = title_line.as_ref().unwrap();
             let start = match spec.align {
                 TitleAlign::LeftOffset(lo) => lo + 1,
                 TitleAlign::RightOffset(ro) => self.width - ro - title_width - 1,
             };
             let end = start + title_width;
             let tch = ch.title;
-            border_top.splice(start..end, format!("{tch} {} {tch}", spec.title).chars());
+
+            let mut decorated = String::with_capacity(tl.slice.len() + 6);
+            decorated.push(tch);
+            decorated.push(' ');
+            if let Some(c2c) = &tl.c2c {
+                decorated.push_str(c2c);
+            }
+            decorated.push_str(tl.slice);
+            if tl.needs_rst {
+                decorated.push_str(ansi::RST_CODE);
+            }
+            decorated.push(' ');
+            decorated.push(tch);
+
+            border_top.splice(start..end, decorated.chars());
         }
 
         let top = border_top.iter().collect::<String>();
